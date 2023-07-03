@@ -16,3 +16,4 @@ CS analyzes database application and web server program information in the curre
 
 - lighttpd
 - tomcat
+- nginx

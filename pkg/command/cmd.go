@@ -6,6 +6,7 @@ import (
 	"io"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 func EnterProcessNsRun(pid int64, cmdStrs []string) *exec.Cmd {
@@ -14,64 +15,17 @@ func EnterProcessNsRun(pid int64, cmdStrs []string) *exec.Cmd {
 	return exec.Command("nsenter", cmds...)
 }
 
-// type EnterNamespace func() string
-//
-//	var WithPidNs EnterNamespace = func() string {
-//		return "--pid"
-//	}
-//
-//	var WithUtcNs EnterNamespace = func() string {
-//		return "--uts"
-//	}
-//
-//	var WithIpcNs EnterNamespace = func() string {
-//		return "--ipc"
-//	}
-//
-//	var WithNetNs EnterNamespace = func() string {
-//		return "--net"
-//	}
-//
-//	var WithMountNs EnterNamespace = func() string {
-//		return "--mount"
-//	}
-//
-//	func MakeNsenterCmd(pid int64, enterNS ...EnterNamespace) (cmd *exec.Cmd,err error) {
-//		if pid > 0 {
-//			var nsflags = make([]string, 7, 7)
-//			nsflags[0] = "-t"
-//			nsflags[1] = strconv.FormatInt(pid, 10)
-//			if len(enterNS) == 0 {
-//				nsflags[2] = "--pid"
-//				nsflags[3] = "--uts"
-//				nsflags[4] = "--ipc"
-//				nsflags[5] = "--net"
-//				nsflags[6] = "--mount"
-//			} else {
-//				idx := 2
-//				for _, ns := range enterNS {
-//					nsflags[idx] = ns()
-//					idx++
-//				}
-//			}
-//			return exec.Command("nsenter", nsflags...)),nil
-//
-//		}
-//		return nil,fmt.Errorf("pid is 0")
-//	}
 func CmdRun(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
-	var stderr *bytes.Buffer
-	stdout, stderr, err = CmdPipeRun(cmdS...)
+	stdout, err = CmdPipeRun(cmdS...)
 	if err != nil {
-		return
+		return nil, err
 	}
-	if stderr.Len() > 0 {
-		err = fmt.Errorf(stderr.String())
-		return
+	if strings.Contains(stdout.String(), fmt.Sprintf("%s: not found", cmdS[0].Path)) {
+		return &bytes.Buffer{}, nil
 	}
 	return
 }
-func CmdPipeRun(cmdS ...*exec.Cmd) (stdout, stderr *bytes.Buffer, err error) {
+func CmdPipeRun(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
 	var out io.ReadCloser
 	var in io.WriteCloser
 	for i, cmd := range cmdS {
@@ -90,7 +44,7 @@ func CmdPipeRun(cmdS ...*exec.Cmd) (stdout, stderr *bytes.Buffer, err error) {
 			go cmdPipe(cmdS[i-1], out, in)
 		}
 		if i == len(cmdS)-1 {
-			stdout, stderr = SetCommandStd(cmd)
+			stdout = SetCommandStd(cmd)
 		}
 	}
 	for _, cmd := range cmdS {
@@ -114,10 +68,9 @@ func cmdPipe(cmd *exec.Cmd, r io.ReadCloser, w io.WriteCloser) {
 	return
 }
 
-func SetCommandStd(cmd *exec.Cmd) (stdout, stderr *bytes.Buffer) {
+func SetCommandStd(cmd *exec.Cmd) (stdout *bytes.Buffer) {
 	stdout = &bytes.Buffer{}
-	stderr = &bytes.Buffer{}
 	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	cmd.Stderr = stdout
 	return
 }

@@ -24,7 +24,6 @@ var Finders = make(map[SwType]map[string]SoftwareFinder)
 // GetSoftware Get the application through the container process
 func GetSoftware(c *Container) (softs []*Software, err error) {
 	var finders = make(map[SoftwareFinder]*Container)
-	fmt.Printf("mysqlFinder:%p\n", Finders[DATABASE]["mysql"])
 
 	err = c.Processes.Range(func(_ int, process *Process) (rangerr error) {
 		var (
@@ -65,7 +64,7 @@ func (l Processes) Range(f func(idx int, process *Process) error) (err error) {
 	for idx, process := range l {
 		err = f(idx, process)
 		if err != nil {
-			break
+			continue
 		}
 	}
 	return

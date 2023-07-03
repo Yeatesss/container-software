@@ -38,7 +38,24 @@ func TestLighttpdFind(t *testing.T) {
 	ff, ee := find.Find(mockLighttpdCtr)
 	fmt.Println(f, e, ff, ee)
 }
-
+func TestNginxFind(t *testing.T) {
+	mockNginxCtr := &core.Container{
+		Id:      "d58f8a7897d5aac5c6c0817204e765f9698e4b4266b1ac536b507e021a4da54d",
+		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Processes: core.Processes{
+			//&core.Process{
+			//	Process: process.NewProcess(1929787),
+			//},
+			&core.Process{
+				Process: process.NewProcess(1929934),
+			},
+		},
+	}
+	find := NewFinder()
+	f, e := find.Find(mockNginxCtr)
+	ff, ee := find.Find(mockNginxCtr)
+	fmt.Println(f, e, ff, ee)
+}
 func TestTomcatFind(t *testing.T) {
 	mockLighttpdCtr := &core.Container{
 		Id:      "ab7920723bbfe58198076216a43fffe0e5a2e88c04c46f7bc6611bb0c8a25a04",
