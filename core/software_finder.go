@@ -24,7 +24,11 @@ var Finders = make(map[SwType]map[string]SoftwareFinder)
 // GetSoftware Get the application through the container process
 func GetSoftware(c *Container) (softs []*Software, err error) {
 	var finders = make(map[SoftwareFinder]*Container)
-
+	defer func() {
+		if e := recover(); e != nil {
+			fmt.Println(e)
+		}
+	}()
 	err = c.Processes.Range(func(_ int, process *Process) (rangerr error) {
 		var (
 			ctr *Container
@@ -43,11 +47,14 @@ func GetSoftware(c *Container) (softs []*Software, err error) {
 		return nil
 	})
 	for finderHandle, container := range finders {
-		software, e := finderHandle.GetSoftware(container)
-		if e != nil {
-			return nil, e
+		if finderHandle != nil {
+			software, e := finderHandle.GetSoftware(container)
+			if e != nil {
+				return nil, e
+			}
+			softs = append(softs, software...)
 		}
-		softs = append(softs, software...)
+
 	}
 	return
 }
@@ -102,22 +109,21 @@ func (p *Process) SetFinder(s SoftwareFinder) {
 	p._finder = s
 }
 
-func GetRunUser(pid int64) (string, error) {
+func GetRunUser(ps process.Process) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
-	fmt.Println("grep", "NSpid", fmt.Sprintf("/proc/%d/status", pid))
-	stdout, err = command.CmdRun(
-		exec.Command("grep", "NSpid", fmt.Sprintf("/proc/%d/status", pid)),
+	stdout, err = ps.Run(
+		exec.Command("grep", "NSpid", fmt.Sprintf("/proc/%d/status", ps.Pid())),
 	)
 	if err != nil {
 		return "", err
 	}
 	internalPID, _ := command.ReadField(stdout.Bytes(), 3)
 	if len(internalPID) > 0 {
-		stdout, err = command.CmdRun(
-			exec.Command("nsenter", "-t", strconv.FormatInt(pid, 10), "--pid", "--uts", "--ipc", "--net", "--mount",
+		stdout, err = ps.Run(
+			exec.Command("nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net", "--mount",
 				"cat", fmt.Sprintf("/proc/%s/status", string(internalPID))),
 			exec.Command("grep", "Uid"),
 		)
@@ -126,8 +132,8 @@ func GetRunUser(pid int64) (string, error) {
 		}
 		uid, _ := command.ReadField(stdout.Bytes(), 2)
 		if len(uid) > 0 {
-			stdout, err = command.CmdRun(
-				command.EnterProcessNsRun(pid, []string{"getent", "passwd", string(uid)}),
+			stdout, err = ps.Run(
+				command.EnterProcessNsRun(ps.Pid(), []string{"getent", "passwd", string(uid)}),
 			)
 			if err != nil {
 				return "", err
@@ -143,17 +149,17 @@ func GetRunUser(pid int64) (string, error) {
 	return "", nil
 }
 
-func GetEndpoint(pid int64) ([]string, error) {
+func GetEndpoint(ps process.Process) ([]string, error) {
 	var (
 		stdout    *bytes.Buffer
 		err       error
 		endpoints []string
 	)
 
-	stdout, err = command.CmdRun(
-		exec.Command("nsenter", "-t", strconv.FormatInt(pid, 10), "-n", "netstat", "-anp"),
+	stdout, err = ps.Run(
+		exec.Command("nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "-n", "netstat", "-anp"),
 		exec.Command("grep", `tcp\|udp`),
-		exec.Command("grep", strconv.FormatInt(pid, 10)),
+		exec.Command("grep", strconv.FormatInt(ps.Pid(), 10)),
 		exec.Command("grep", `LISTEN`),
 	)
 	if err != nil {

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	jsoniter "github.com/json-iterator/go"
+
 	"github.com/Yeatesss/container-software/pkg/proc/process"
 
 	"github.com/Yeatesss/container-software/core"
@@ -15,7 +17,7 @@ func TestFind(t *testing.T) {
 		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		Processes: core.Processes{
 			&core.Process{
-				Process: process.NewProcess(313838),
+				Process: process.NewProcess(313838, nil),
 			},
 		},
 	}
@@ -29,7 +31,7 @@ func TestLighttpdFind(t *testing.T) {
 		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		Processes: core.Processes{
 			&core.Process{
-				Process: process.NewProcess(2548908),
+				Process: process.NewProcess(2548908, nil),
 			},
 		},
 	}
@@ -44,10 +46,10 @@ func TestNginxFind(t *testing.T) {
 		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		Processes: core.Processes{
 			//&core.Process{
-			//	Process: process.NewProcess(1929787),
+			//	Process: process.NewProcess(1929787,nil),
 			//},
 			&core.Process{
-				Process: process.NewProcess(1929934),
+				Process: process.NewProcess(1929934, nil),
 			},
 		},
 	}
@@ -62,7 +64,7 @@ func TestTomcatFind(t *testing.T) {
 		EnvPath: "PATH=/usr/local/tomcat/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		Processes: core.Processes{
 			&core.Process{
-				Process: process.NewProcess(1142497),
+				Process: process.NewProcess(1142497, nil),
 			},
 		},
 	}
@@ -70,6 +72,25 @@ func TestTomcatFind(t *testing.T) {
 	f, e := find.Find(mockLighttpdCtr)
 	ff, ee := find.Find(mockLighttpdCtr)
 	fmt.Println(f, e, ff, ee)
+}
+
+func TestJbossFind(t *testing.T) {
+	mockJbossCtr := &core.Container{
+		Id:      "5c95bddc2a3c8a4e94b58ecda66564eb32d7e314985199fb6413a6b32feeca21",
+		EnvPath: "PATH=/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Processes: core.Processes{
+			&core.Process{
+				Process: process.NewProcess(2074003, []int64{2074133}),
+			},
+			&core.Process{
+				Process: process.NewProcess(2074133, nil),
+			},
+		},
+	}
+	find := NewFinder()
+	f, e := find.Find(mockJbossCtr)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(e)
 }
 
 //func TestByte(t *testing.T) {

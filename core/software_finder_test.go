@@ -14,7 +14,7 @@ func TestFinders(t *testing.T) {
 		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		Processes: Processes{
 			&Process{
-				Process: process.NewProcess(313838),
+				Process: process.NewProcess(313838, nil),
 			},
 			//&Process{
 			//	Pid: 1572497,

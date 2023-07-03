@@ -12,24 +12,32 @@ import (
 var _ Process = &LinuxProcess{}
 
 type LinuxProcess struct {
-	comm *bytes.Buffer
-	cmd  *bytes.Buffer
-	cwd  *bytes.Buffer
-	exe  *bytes.Buffer
-	pid  int64
+	command.CmdRuner
+	comm     *bytes.Buffer
+	cmd      *bytes.Buffer
+	cwd      *bytes.Buffer
+	exe      *bytes.Buffer
+	pid      int64
+	childPid []int64
 }
 
-func NewProcess(pid int64) *LinuxProcess {
-	return &LinuxProcess{pid: pid}
+func NewProcess(pid int64, childPid []int64) *LinuxProcess {
+	if childPid == nil {
+		childPid = []int64{}
+	}
+	return &LinuxProcess{pid: pid, childPid: childPid, CmdRuner: command.NewCmdRuner()}
 }
 func (p *LinuxProcess) Pid() int64 {
 	return p.pid
+}
+func (p *LinuxProcess) ChildPids() []int64 {
+	return p.childPid
 }
 func (p *LinuxProcess) Comm() (exe *bytes.Buffer, err error) {
 	if p.comm != nil {
 		return p.comm, nil
 	}
-	p.comm, err = command.CmdRun(
+	p.comm, err = p.Run(
 		exec.Command("cat", fmt.Sprintf("/proc/%d/comm", p.pid)),
 	)
 	if err != nil {
@@ -53,7 +61,7 @@ func (p *LinuxProcess) Cwd() (cwd *bytes.Buffer, err error) {
 	if p.cwd != nil {
 		return p.cwd, nil
 	}
-	cwd, err = command.CmdRun(
+	cwd, err = p.Run(
 		exec.Command("ls", "-l", fmt.Sprintf("/proc/%d/cwd", p.pid)),
 	)
 	return bytes.NewBuffer(bytes.TrimSpace(cwd.Bytes())), nil
@@ -62,7 +70,7 @@ func (p *LinuxProcess) Exe() (exe *bytes.Buffer, err error) {
 	if p.exe != nil {
 		return p.exe, nil
 	}
-	exe, err = command.CmdRun(
+	exe, err = p.Run(
 		exec.Command("ls", "-l", fmt.Sprintf("/proc/%d/exe", p.pid)),
 	)
 	return bytes.NewBuffer(bytes.TrimSpace(exe.Bytes())), nil

@@ -2,6 +2,7 @@ package process
 
 import (
 	"bytes"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -17,13 +18,14 @@ func GetProcessExe(process Process) (string, error) {
 		cmdline     *bytes.Buffer
 		cmdlineByte []byte
 		exePath     []byte
+		commStr     string
 	)
 	comm, err := process.Comm()
 	if err != nil {
 		return "", err
 	}
-
-	switch strings.TrimSpace(comm.String()) {
+	commStr = strings.TrimSpace(comm.String())
+	switch commStr {
 	case "bash", "sh":
 		cmdline, err = process.Cmdline()
 		if err != nil {
@@ -32,7 +34,7 @@ func GetProcessExe(process Process) (string, error) {
 		cmdlineByte = cmdline.Bytes()
 		for len(cmdlineByte) > 0 {
 			exePath, cmdlineByte = command.ReadField(cmdlineByte, 1)
-			if string(exePath) != comm.String() && IsPath(string(exePath)) {
+			if string(exePath) != commStr && IsPath(string(exePath)) {
 				break
 			}
 		}
@@ -59,6 +61,40 @@ func GetProcessExe(process Process) (string, error) {
 			return "", err
 		}
 		exe, _ := command.ReadField(exeBuf.Bytes(), 11)
+		if strings.Contains(string(exe), "bash") || strings.Contains(string(exe), "sh") {
+			//avoid /bin/bash comm -f xxx.sh
+			cmdline, err = process.Cmdline()
+			if err != nil {
+				return "", err
+			}
+			cmdlineByte = cmdline.Bytes()
+			for len(cmdlineByte) > 0 {
+				exePath, cmdlineByte = command.ReadField(cmdlineByte, 1)
+				if strings.Contains(string(exePath), commStr) {
+					if path.IsAbs(string(exePath)) {
+						return string(exePath), nil
+					}
+				}
+			}
+			var findStdOut *bytes.Buffer
+			findStdOut, err = process.Run(
+				command.EnterProcessNsRun(process.Pid(), []string{"find", "/", "-name", commStr}),
+			)
+			if err != nil {
+				return "", err
+			}
+			configRaw := findStdOut.Bytes()
+			if len(configRaw) > 0 {
+				var val []byte
+				val, configRaw = command.ReadField(configRaw, 1)
+				if bytes.Contains(val, comm.Bytes()) {
+					return string(val), nil
+				}
+
+			}
+			return "", nil
+
+		}
 		return string(exe), nil
 
 	}
@@ -67,7 +103,9 @@ func GetProcessExe(process Process) (string, error) {
 }
 
 type Process interface {
+	Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error)
 	Pid() int64
+	ChildPids() []int64
 	Comm() (comm *bytes.Buffer, err error)
 	Cwd() (cwd *bytes.Buffer, err error)
 	Cmdline() (cmdline *bytes.Buffer, err error)

@@ -63,11 +63,11 @@ func (m TomcatFindler) GetSoftware(c *Container) ([]*Software, error) {
 			return
 		}
 		software.BinaryPath = exe
-		software.BindEndpoint, err = GetEndpoint(ps.Pid())
+		software.BindEndpoint, err = GetEndpoint(ps)
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ps.Pid())
+		software.User, err = GetRunUser(ps)
 		if err != nil {
 			return err
 		}
@@ -89,7 +89,7 @@ func getTomcatVersionAndConfig(envPath string, ps *Process) (version string, con
 		runLine           []string
 	)
 
-	findVersionStdout, err = command.CmdRun(
+	findVersionStdout, err = ps.Run(
 		command.EnterProcessNsRun(ps.Pid(), []string{"find", "/", "-name", "version.sh"}),
 	)
 	if err != nil {

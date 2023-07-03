@@ -2,7 +2,6 @@ package core
 
 import (
 	"bytes"
-	"fmt"
 	"strings"
 
 	"github.com/Yeatesss/container-software/pkg/command"
@@ -33,9 +32,8 @@ func (m LighttpdFindler) Verify(c *Container, thisis func(*Process, SoftwareFind
 		if err != nil {
 			return
 		}
-		stdout, err := command.CmdRun(
+		stdout, err := ps.Run(
 			command.EnterProcessNsRun(ps.Pid(), []string{exe, "-V"}))
-		fmt.Println(stdout)
 		if err != nil {
 			return err
 		}
@@ -67,15 +65,15 @@ func (m LighttpdFindler) GetSoftware(c *Container) ([]*Software, error) {
 			return
 		}
 		software.BinaryPath = exe
-		software.BindEndpoint, err = GetEndpoint(ps.Pid())
+		software.BindEndpoint, err = GetEndpoint(ps)
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ps.Pid())
+		software.User, err = GetRunUser(ps)
 		if err != nil {
 			return err
 		}
-		software.Version, err = getLighttpdVersion(ps.Pid(), exe)
+		software.Version, err = getLighttpdVersion(ps, exe)
 		if err != nil {
 			return err
 		}
@@ -89,13 +87,13 @@ func (m LighttpdFindler) GetSoftware(c *Container) ([]*Software, error) {
 	return softwares, nil
 }
 
-func getLighttpdVersion(pid int64, exe string) (string, error) {
+func getLighttpdVersion(ps process.Process, exe string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
-	stdout, err = command.CmdRun(
-		command.EnterProcessNsRun(pid, []string{exe, "-V"}),
+	stdout, err = ps.Run(
+		command.EnterProcessNsRun(ps.Pid(), []string{exe, "-V"}),
 	)
 	if err != nil {
 		return "", err
@@ -129,7 +127,7 @@ func getLighttpdConfig(ps process.Process) (string, error) {
 	var (
 		stdout *bytes.Buffer
 	)
-	stdout, err = command.CmdRun(
+	stdout, err = ps.Run(
 		command.EnterProcessNsRun(ps.Pid(), []string{"find", "/", "-name", "lighttpd.conf"}),
 	)
 	if err != nil {

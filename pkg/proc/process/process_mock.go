@@ -2,6 +2,7 @@ package process
 
 import (
 	"bytes"
+	"os/exec"
 )
 
 var _ Process = &MockProcess{}
@@ -12,6 +13,16 @@ type MockProcess struct {
 	cwd     string // lrwxrwxrwx 1 root root 0 Jun 20 17:28 /proc/2548908/cwd -> //
 	comm    string // lighttpd
 	exe     string // lrwxrwxrwx 1 root root 0 Jun 19 10:52 /proc/2548908/exe -> /usr/sbin/lighttpd
+}
+
+func (p *MockProcess) Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (p *MockProcess) ChildPids() []int64 {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (p *MockProcess) Pid() int64 {

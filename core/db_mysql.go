@@ -2,7 +2,6 @@ package core
 
 import (
 	"bytes"
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -34,9 +33,8 @@ func (m MysqlFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)
 		if err != nil {
 			return
 		}
-		stdout, err := command.CmdRun(
+		stdout, err := ps.Run(
 			command.EnterProcessNsRun(ps.Pid(), []string{exe, "-V"}))
-		fmt.Println(stdout)
 		if err != nil {
 			return err
 		}
@@ -68,15 +66,15 @@ func (m MysqlFindler) GetSoftware(c *Container) ([]*Software, error) {
 			return
 		}
 		software.BinaryPath = exe
-		software.BindEndpoint, err = GetEndpoint(ps.Pid())
+		software.BindEndpoint, err = GetEndpoint(ps)
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ps.Pid())
+		software.User, err = GetRunUser(ps)
 		if err != nil {
 			return err
 		}
-		software.Version, err = getMysqlVersion(ps.Pid(), exe)
+		software.Version, err = getMysqlVersion(ps, exe)
 		if err != nil {
 			return err
 		}
@@ -90,13 +88,13 @@ func (m MysqlFindler) GetSoftware(c *Container) ([]*Software, error) {
 	return softwares, nil
 }
 
-func getMysqlVersion(pid int64, exe string) (string, error) {
+func getMysqlVersion(ps process.Process, exe string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
-	stdout, err = command.CmdRun(
-		command.EnterProcessNsRun(pid, []string{exe, "-V"}),
+	stdout, err = ps.Run(
+		command.EnterProcessNsRun(ps.Pid(), []string{exe, "-V"}),
 	)
 	if err != nil {
 		return "", err
@@ -124,7 +122,7 @@ func getMysqlConfig(ps process.Process) (string, error) {
 	var (
 		stdout *bytes.Buffer
 	)
-	stdout, err = command.CmdRun(
+	stdout, err = ps.Run(
 		command.EnterProcessNsRun(ps.Pid(), []string{"find", "/", "-name", "my.cnf"}),
 	)
 	if err != nil {

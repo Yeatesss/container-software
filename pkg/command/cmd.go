@@ -9,23 +9,43 @@ import (
 	"strings"
 )
 
+type CmdRuner struct {
+	cache map[string]string
+}
+
+func NewCmdRuner() CmdRuner {
+	return CmdRuner{cache: make(map[string]string)}
+}
 func EnterProcessNsRun(pid int64, cmdStrs []string) *exec.Cmd {
 	cmds := append([]string{"-t", strconv.FormatInt(pid, 10), "--pid", "--uts", "--ipc", "--net", "--mount"}, cmdStrs...)
 
 	return exec.Command("nsenter", cmds...)
 }
 
-func CmdRun(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
-	stdout, err = CmdPipeRun(cmdS...)
+func (p CmdRuner) Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
+	var cmdStr bytes.Buffer
+	for _, cmd := range cmdS {
+		cmdStr.WriteString(cmd.String())
+	}
+	defer func() {
+		if stdout != nil {
+			p.cache[cmdStr.String()] = stdout.String()
+		}
+	}()
+	if v, ok := p.cache[cmdStr.String()]; ok {
+		return bytes.NewBuffer([]byte(v)), nil
+	}
+	stdout, err = p.cmdPipeRun(cmdS...)
 	if err != nil {
 		return nil, err
 	}
+
 	if strings.Contains(stdout.String(), fmt.Sprintf("%s: not found", cmdS[0].Path)) {
 		return &bytes.Buffer{}, nil
 	}
 	return
 }
-func CmdPipeRun(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
+func (p CmdRuner) cmdPipeRun(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
 	var out io.ReadCloser
 	var in io.WriteCloser
 	for i, cmd := range cmdS {

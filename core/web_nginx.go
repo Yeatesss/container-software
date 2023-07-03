@@ -2,7 +2,6 @@ package core
 
 import (
 	"bytes"
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -34,9 +33,8 @@ func (m NginxFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)
 		if err != nil {
 			return
 		}
-		stdout, err := command.CmdRun(
+		stdout, err := ps.Run(
 			command.EnterProcessNsRun(ps.Pid(), []string{exe, "-V"}))
-		fmt.Println(stdout)
 		if err != nil {
 			return err
 		}
@@ -68,19 +66,19 @@ func (m NginxFindler) GetSoftware(c *Container) ([]*Software, error) {
 			return
 		}
 		software.BinaryPath = exe
-		software.BindEndpoint, err = GetEndpoint(ps.Pid())
+		software.BindEndpoint, err = GetEndpoint(ps)
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ps.Pid())
+		software.User, err = GetRunUser(ps)
 		if err != nil {
 			return err
 		}
-		software.Version, err = getNginxVersion(ps.Pid(), exe)
+		software.Version, err = getNginxVersion(ps, exe)
 		if err != nil {
 			return err
 		}
-		software.ConfigPath, err = getNginxConfig(ps.Pid(), exe)
+		software.ConfigPath, err = getNginxConfig(ps, exe)
 		if err != nil {
 			return err
 		}
@@ -90,13 +88,13 @@ func (m NginxFindler) GetSoftware(c *Container) ([]*Software, error) {
 	return softwares, nil
 }
 
-func getNginxVersion(pid int64, exe string) (string, error) {
+func getNginxVersion(ps process.Process, exe string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
-	stdout, err = command.CmdRun(
-		command.EnterProcessNsRun(pid, []string{exe, "-V"}),
+	stdout, err = ps.Run(
+		command.EnterProcessNsRun(ps.Pid(), []string{exe, "-V"}),
 	)
 	if err != nil {
 		return "", err
@@ -110,22 +108,18 @@ func getNginxVersion(pid int64, exe string) (string, error) {
 
 }
 
-func getNginxConfig(pid int64, exe string) (string, error) {
+func getNginxConfig(ps process.Process, exe string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
-	stdout, err = command.CmdRun(
-		command.EnterProcessNsRun(pid, []string{exe, "-t"}),
+	stdout, err = ps.Run(
+		command.EnterProcessNsRun(ps.Pid(), []string{exe, "-t"}),
 	)
 	if err != nil {
 		return "", err
 	}
-	defer func() {
-		if e := recover(); e != nil {
-			fmt.Println(e)
-		}
-	}()
+
 	if strings.Contains(stdout.String(), ".conf") {
 		re := regexp.MustCompile(`configuration\s+file\s+([\w/]+\.\w+)\s+test\s+is\s+successful`)
 		c := re.FindStringSubmatch(stdout.String())
