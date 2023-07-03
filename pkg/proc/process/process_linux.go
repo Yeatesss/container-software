@@ -75,3 +75,25 @@ func (p *LinuxProcess) Exe() (exe *bytes.Buffer, err error) {
 	)
 	return bytes.NewBuffer(bytes.TrimSpace(exe.Bytes())), nil
 }
+func (p *LinuxProcess) NsPids() ([]string, error) {
+	var nsPids []string
+	stdout, err := p.CmdRuner.Run(
+		exec.Command("grep", "NSpid", fmt.Sprintf("/proc/%d/status", p.pid)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if stdout.Len() > 0 {
+		nsPid := stdout.Bytes()
+		for len(nsPid) > 0 {
+			var val []byte
+			val, nsPid = command.NextField(nsPid)
+			if bytes.Contains(val, []byte("NSpid:")) {
+				continue
+			}
+			nsPids = append(nsPids, string(val))
+		}
+	}
+
+	return nsPids, nil
+}

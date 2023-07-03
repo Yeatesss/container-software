@@ -1,6 +1,7 @@
 package process
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -48,4 +49,8 @@ func TestGetProcessExe(t *testing.T) {
 	//fmt.Println(bytes.Contains([]byte("/opt/jboss/wildfly/bin/standalone.sh"), []byte("standalone.sh")))
 	///opt/jboss/wildfly/bin/standalone.sh
 	//standalone.sh
+}
+
+func TestNsPids(t *testing.T) {
+	fmt.Println(NewProcess(2874135, nil).NsPids())
 }

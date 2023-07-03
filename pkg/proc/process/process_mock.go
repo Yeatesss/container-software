@@ -8,11 +8,13 @@ import (
 var _ Process = &MockProcess{}
 
 type MockProcess struct {
-	pid     int64
-	cmdline string // lighttpd -D -f /etc/lighttpd/lighttpd.conf
-	cwd     string // lrwxrwxrwx 1 root root 0 Jun 20 17:28 /proc/2548908/cwd -> //
-	comm    string // lighttpd
-	exe     string // lrwxrwxrwx 1 root root 0 Jun 19 10:52 /proc/2548908/exe -> /usr/sbin/lighttpd
+	pid      int64
+	childPid []int64
+	nsPids   []string
+	cmdline  string // lighttpd -D -f /etc/lighttpd/lighttpd.conf
+	cwd      string // lrwxrwxrwx 1 root root 0 Jun 20 17:28 /proc/2548908/cwd -> //
+	comm     string // lighttpd
+	exe      string // lrwxrwxrwx 1 root root 0 Jun 19 10:52 /proc/2548908/exe -> /usr/sbin/lighttpd
 }
 
 func (p *MockProcess) Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
@@ -21,13 +23,15 @@ func (p *MockProcess) Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
 }
 
 func (p *MockProcess) ChildPids() []int64 {
-	//TODO implement me
-	panic("implement me")
+	return p.childPid
+}
+
+func (p *MockProcess) NsPids() ([]string, error) {
+	return p.nsPids, nil
 }
 
 func (p *MockProcess) Pid() int64 {
-	//TODO implement me
-	panic("implement me")
+	return p.pid
 }
 
 func (p *MockProcess) Comm() (exe *bytes.Buffer, err error) {

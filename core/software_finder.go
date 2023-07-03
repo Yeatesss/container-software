@@ -112,19 +112,17 @@ func (p *Process) SetFinder(s SoftwareFinder) {
 func GetRunUser(ps process.Process) (string, error) {
 	var (
 		stdout *bytes.Buffer
+		nsPids []string
 		err    error
 	)
-	stdout, err = ps.Run(
-		exec.Command("grep", "NSpid", fmt.Sprintf("/proc/%d/status", ps.Pid())),
-	)
+	nsPids, err = ps.NsPids()
 	if err != nil {
 		return "", err
 	}
-	internalPID, _ := command.ReadField(stdout.Bytes(), 3)
-	if len(internalPID) > 0 {
+	if len(nsPids) > 0 {
 		stdout, err = ps.Run(
 			exec.Command("nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net", "--mount",
-				"cat", fmt.Sprintf("/proc/%s/status", string(internalPID))),
+				"cat", fmt.Sprintf("/proc/%s/status", nsPids[len(nsPids)-1])),
 			exec.Command("grep", "Uid"),
 		)
 		if err != nil {

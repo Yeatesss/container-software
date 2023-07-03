@@ -110,6 +110,7 @@ type Process interface {
 	Cwd() (cwd *bytes.Buffer, err error)
 	Cmdline() (cmdline *bytes.Buffer, err error)
 	Exe() (exe *bytes.Buffer, err error)
+	NsPids() ([]string, error)
 }
 
 func IsPath(path string) bool {

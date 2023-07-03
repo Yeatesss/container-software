@@ -43,6 +43,7 @@ func (p CmdRuner) Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
 	if strings.Contains(stdout.String(), fmt.Sprintf("%s: not found", cmdS[0].Path)) {
 		return &bytes.Buffer{}, nil
 	}
+	stdout = bytes.NewBuffer(bytes.TrimSpace(stdout.Bytes()))
 	return
 }
 func (p CmdRuner) cmdPipeRun(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
