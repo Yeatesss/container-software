@@ -24,7 +24,7 @@ type Cache struct {
 
 func NewFinder() *Finder {
 	ctrCacheOnce.Do(func() {
-		ctrCache = freecache.NewCache(1024 * 1024 * 20)
+		ctrCache = freecache.NewCache(1024 * 1024 * 10)
 	})
 	return &Finder{Cache{ctrCache: ctrCache}}
 }

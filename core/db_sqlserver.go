@@ -37,6 +37,7 @@ func (m SqlServerFindler) Verify(c *Container, thisis func(*Process, SoftwareFin
 		cmd.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
 		stdout, err := ps.Run(cmd)
 		if err != nil {
+			//TODO:Don't know why it returns a correct result and also returns an err
 			if _, ok := err.(*exec.ExitError); ok {
 				err = nil
 			} else {

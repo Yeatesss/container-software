@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -68,8 +69,11 @@ type SoftwareFinder interface {
 type Processes []*Process
 
 func (l Processes) Range(f func(idx int, process *Process) error) (err error) {
-	for idx, process := range l {
-		err = f(idx, process)
+	sort.SliceStable(l, func(i, j int) bool {
+		return l[i].Pid() < l[j].Pid()
+	})
+	for idx, ps := range l {
+		err = f(idx, ps)
 		if err != nil {
 			continue
 		}
@@ -113,6 +117,7 @@ func GetRunUser(ps process.Process) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		nsPids []string
+		ids    []string
 		err    error
 	)
 	nsPids, err = ps.NsPids()
@@ -120,30 +125,35 @@ func GetRunUser(ps process.Process) (string, error) {
 		return "", err
 	}
 	if len(nsPids) > 0 {
-		stdout, err = ps.Run(
-			exec.Command("nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net", "--mount",
-				"cat", fmt.Sprintf("/proc/%s/status", nsPids[len(nsPids)-1])),
-			exec.Command("grep", "Uid"),
-		)
-		if err != nil {
-			return "", err
-		}
-		uid, _ := command.ReadField(stdout.Bytes(), 2)
-		if len(uid) > 0 {
+		for _, uidType := range []string{"Uid", "Gid"} {
 			stdout, err = ps.Run(
-				command.EnterProcessNsRun(ps.Pid(), []string{"getent", "passwd", string(uid)}),
+				exec.Command("nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net", "--mount",
+					"cat", fmt.Sprintf("/proc/%s/status", nsPids[len(nsPids)-1])),
+				exec.Command("grep", uidType),
 			)
 			if err != nil {
-				return string(uid), nil
+				return "", err
 			}
-			if stdout.Len() > 0 {
-				return strings.Split(stdout.String(), ":")[0], nil
-			}
+			id, _ := command.ReadField(stdout.Bytes(), 2)
+			if len(id) > 0 {
+				stdout, err = ps.Run(
+					command.EnterProcessNsRun(ps.Pid(), []string{"getent", "passwd", string(id)}),
+				)
+				if err != nil {
+					ids = append(ids, string(id))
+					continue
+				}
+				if stdout.Len() > 0 {
+					ids = append(ids, strings.Split(stdout.String(), ":")[0])
+					continue
+				}
 
+			}
 		}
-
 	}
-
+	if len(ids) > 0 {
+		return strings.Join(ids, ":"), nil
+	}
 	return "", nil
 }
 
