@@ -13,9 +13,9 @@ CS analyzes database application and web server program information in the curre
 ##### support
 - mysql 
 - postgresql
+- mongo
 
 ##### feature
-- mongo
 - redis
 - microsoft_sqlserver
 - sqlite
