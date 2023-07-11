@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 type CmdRuner struct {
@@ -36,7 +38,7 @@ func (p CmdRuner) Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
 		return bytes.NewBuffer([]byte(v)), nil
 	}
 	stdout, err = p.cmdPipeRun(cmdS...)
-	if err != nil {
+	if err = parseExitError(err); err != nil {
 		return stdout, err
 	}
 
@@ -45,6 +47,17 @@ func (p CmdRuner) Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
 	}
 	stdout = bytes.NewBuffer(bytes.TrimSpace(stdout.Bytes()))
 	return
+}
+
+func parseExitError(err error) error {
+	e, ok := err.(*exec.ExitError)
+	if ok && len(e.Stderr) == 0 {
+		return nil
+	}
+	if ok {
+		return errors.New(string(e.Stderr))
+	}
+	return err
 }
 func (p CmdRuner) cmdPipeRun(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
 	var out io.ReadCloser

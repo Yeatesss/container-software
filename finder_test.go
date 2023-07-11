@@ -84,6 +84,22 @@ func TestSqlServerFind(t *testing.T) {
 	fmt.Println(e)
 }
 
+func TestSqliteFind(t *testing.T) {
+	mockSqliteCtr := &core.Container{
+		Id:      "44bb4e0f6243534cf97d54f63c3b527aaf339ca245209c592230580b8240e28d",
+		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Processes: core.Processes{
+			&core.Process{
+				Process: process.NewProcess(3878895, nil),
+			},
+		},
+	}
+	find := NewFinder()
+	f, e := find.Find(mockSqliteCtr)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(e)
+}
+
 func TestLighttpdFind(t *testing.T) {
 	mockLighttpdCtr := &core.Container{
 		Id:      "1f189cefd12834a0e40574e951f767bbfe5de961172584f8fba5ef876679402d",

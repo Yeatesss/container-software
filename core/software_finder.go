@@ -125,7 +125,9 @@ func GetRunUser(ps process.Process) (string, error) {
 		return "", err
 	}
 	if len(nsPids) > 0 {
+		var idx = 2
 		for _, uidType := range []string{"Uid", "Gid"} {
+			idx++
 			stdout, err = ps.Run(
 				exec.Command("nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net", "--mount",
 					"cat", fmt.Sprintf("/proc/%s/status", nsPids[len(nsPids)-1])),
@@ -137,18 +139,19 @@ func GetRunUser(ps process.Process) (string, error) {
 			id, _ := command.ReadField(stdout.Bytes(), 2)
 			if len(id) > 0 {
 				stdout, err = ps.Run(
-					command.EnterProcessNsRun(ps.Pid(), []string{"getent", "passwd", string(id)}),
+					command.EnterProcessNsRun(ps.Pid(), []string{"getent", "passwd"}),
+					exec.Command("awk", "-F:", fmt.Sprintf(`$%d==%s{print}`, idx, string(id))),
 				)
 				if err != nil {
 					ids = append(ids, string(id))
 					continue
 				}
 				if stdout.Len() > 0 {
-					ids = append(ids, strings.Split(stdout.String(), ":")[0])
-					continue
+					id = []byte(strings.Split(stdout.String(), ":")[0])
 				}
 
 			}
+			ids = append(ids, string(id))
 		}
 	}
 	if len(ids) > 0 {
