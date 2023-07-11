@@ -25,6 +25,25 @@ func TestFind(t *testing.T) {
 	find.Find(mockMysqlCtr)
 }
 
+func TestPostgrasqlFind(t *testing.T) {
+	mockMysqlCtr := &core.Container{
+		Id:      "9cf0090ccb274d9702d0abc229572a27b3a9b5646994df64030f7dd0ccd4a4cc",
+		EnvPath: "PATH=/opt/bitnami/postgresql/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Processes: core.Processes{
+			&core.Process{
+				Process: process.NewProcess(2944176, []int64{2944380}),
+			},
+			&core.Process{
+				Process: process.NewProcess(2944380, nil),
+			},
+		},
+	}
+	find := NewFinder()
+	f, e := find.Find(mockMysqlCtr)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(e)
+}
+
 func TestLighttpdFind(t *testing.T) {
 	mockLighttpdCtr := &core.Container{
 		Id:      "1f189cefd12834a0e40574e951f767bbfe5de961172584f8fba5ef876679402d",

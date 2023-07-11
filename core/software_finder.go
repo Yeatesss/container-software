@@ -134,7 +134,7 @@ func GetRunUser(ps process.Process) (string, error) {
 				command.EnterProcessNsRun(ps.Pid(), []string{"getent", "passwd", string(uid)}),
 			)
 			if err != nil {
-				return "", err
+				return string(uid), nil
 			}
 			if stdout.Len() > 0 {
 				return strings.Split(stdout.String(), ":")[0], nil
