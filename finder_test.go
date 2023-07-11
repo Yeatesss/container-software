@@ -93,7 +93,21 @@ func TestJbossFind(t *testing.T) {
 	fmt.Println(e)
 }
 
-//func TestByte(t *testing.T) {
-//	var b = []byte{9}
-//	fmt.Println(string(b))
-//}
+func TestApacheFind(t *testing.T) {
+	mockApacheCtr := &core.Container{
+		Id:      "ca77d884536f6f7faec7662efb7ec652ec5627edeeb910d7ac50ae62e95f04e4",
+		EnvPath: "PATH=/usr/local/apache2/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Processes: core.Processes{
+			&core.Process{
+				Process: process.NewProcess(2549367, []int64{2549399}),
+			},
+			&core.Process{
+				Process: process.NewProcess(2549399, []int64{2549403}),
+			},
+		},
+	}
+	find := NewFinder()
+	f, e := find.Find(mockApacheCtr)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(e)
+}
