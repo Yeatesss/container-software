@@ -37,7 +37,7 @@ func (p CmdRuner) Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
 	}
 	stdout, err = p.cmdPipeRun(cmdS...)
 	if err != nil {
-		return nil, err
+		return stdout, err
 	}
 
 	if strings.Contains(stdout.String(), fmt.Sprintf("%s: not found", cmdS[0].Path)) {

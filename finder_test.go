@@ -62,6 +62,28 @@ func TestMongoFind(t *testing.T) {
 	fmt.Println(e)
 }
 
+func TestSqlServerFind(t *testing.T) {
+	mockMongoCtr := &core.Container{
+		Id:      "7f20fb5e99fba9377480765e2249d0d859b5ef69d62f25c193d8f7a7ed08543a",
+		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Processes: core.Processes{
+			&core.Process{
+				Process: process.NewProcess(3082182, []int64{3082239}),
+			},
+			&core.Process{
+				Process: process.NewProcess(3082239, []int64{3082241}),
+			},
+			&core.Process{
+				Process: process.NewProcess(3082241, nil),
+			},
+		},
+	}
+	find := NewFinder()
+	f, e := find.Find(mockMongoCtr)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(e)
+}
+
 func TestLighttpdFind(t *testing.T) {
 	mockLighttpdCtr := &core.Container{
 		Id:      "1f189cefd12834a0e40574e951f767bbfe5de961172584f8fba5ef876679402d",
