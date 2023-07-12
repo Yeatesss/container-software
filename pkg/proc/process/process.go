@@ -113,13 +113,20 @@ type Process interface {
 	NsPids() ([]string, error)
 }
 
-func IsPath(path string) bool {
-	path = strings.TrimSpace(path)
-	if len(path) == 0 {
+func IsPath(pathStr string) bool {
+	if path.IsAbs(pathStr) {
+		return true
+	}
+	pathStr = strings.TrimSpace(pathStr)
+	if len(pathStr) == 0 {
 		return false
 	}
-	_, ok := specialCharacters[[]byte(path)[0]]
-	return ok
+	first := []byte(pathStr)[0]
+	//a-zA-Z0-9.
+	if (first >= 97 && first <= 122) || (first >= 65 && first <= 90) || (first >= 48 && first <= 57) || first == 46 {
+		return true
+	}
+	return false
 }
 
 var specialCharacters = map[uint8]struct{}{

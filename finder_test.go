@@ -100,6 +100,25 @@ func TestSqliteFind(t *testing.T) {
 	fmt.Println(e)
 }
 
+func TestRedisFind(t *testing.T) {
+	mockRedisCtr := &core.Container{
+		Id:      "2689c2fff772472bde16f59817ad297acd2df0b234a660a487d97ee1c13fb1a2",
+		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Processes: core.Processes{
+			&core.Process{
+				Process: process.NewProcess(3946496, []int64{3946536}),
+			},
+			&core.Process{
+				Process: process.NewProcess(3946536, nil),
+			},
+		},
+	}
+	find := NewFinder()
+	f, e := find.Find(mockRedisCtr)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(e)
+}
+
 func TestLighttpdFind(t *testing.T) {
 	mockLighttpdCtr := &core.Container{
 		Id:      "1f189cefd12834a0e40574e951f767bbfe5de961172584f8fba5ef876679402d",

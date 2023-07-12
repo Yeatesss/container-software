@@ -16,9 +16,9 @@ CS analyzes database application and web server program information in the curre
 - mongo
 - microsoft_sqlserver
 - sqlite
+- redis
 
 ##### feature
-- redis
 
 
 #### web
