@@ -198,9 +198,11 @@ func GetEndpoint(ctx context.Context, ps process.Process) ([]string, error) {
 			break
 		}
 		var val []byte
+		protocols, _ := command.ReadField(endpointRaw, 1)
+
 		val, endpointRaw = command.ReadField(endpointRaw, 4)
 		if len(val) > 0 {
-			endpoints = append(endpoints, string(val))
+			endpoints = append(endpoints, string(protocols)+"/"+string(val))
 		}
 		endpointRaw = command.NextLine(endpointRaw)
 	}

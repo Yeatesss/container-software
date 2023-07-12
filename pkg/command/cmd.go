@@ -91,14 +91,23 @@ func Grep(stdout *bytes.Buffer, filters ...string) *bytes.Buffer {
 		cmdByte := stdout.Bytes()
 		for len(cmdByte) > 0 {
 			line := ReadLine(cmdByte)
-			for _, filter := range filters {
+			var match []byte
+			for idx, filter := range filters {
+				if idx > 0 && len(match) == 0 {
+					break
+				}
+				match = []byte{}
 				cfilters := strings.Split(filter, "|")
 				for _, cfilter := range cfilters {
 					if bytes.Contains(line, []byte(cfilter)) {
-						res.Write(line)     // 将符合预期的值写入res
-						res.WriteByte('\n') // 添加换行符
+						match = line
+						break
 					}
 				}
+			}
+			if len(match) > 0 {
+				res.Write(line)     // 将符合预期的值写入res
+				res.WriteByte('\n') // 添加换行符
 			}
 			cmdByte = NextLine(cmdByte)
 		}

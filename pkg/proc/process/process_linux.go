@@ -65,7 +65,7 @@ func (p *LinuxProcess) Cwd(ctx context.Context) (cwd *bytes.Buffer, err error) {
 		return p.cwd, nil
 	}
 	cwd, err = p.Run(
-		p.NewExecCommand(ctx, "cat", fmt.Sprintf("/proc/%d/cwd", p.pid)),
+		p.NewExecCommand(ctx, "ls", "-l", fmt.Sprintf("/proc/%d/cwd", p.pid)),
 	)
 	if err != nil {
 		return nil, err
