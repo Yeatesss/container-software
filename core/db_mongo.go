@@ -2,9 +2,11 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"strings"
 
 	"github.com/Yeatesss/container-software/pkg/command"
+	"github.com/Yeatesss/container-software/pkg/log"
 
 	"github.com/Yeatesss/container-software/pkg/proc/process"
 )
@@ -13,27 +15,29 @@ var _ SoftwareFinder = &MongoFindler{}
 
 type MongoFindler struct{}
 
+const Mongo SwName = "mongo"
+
 func init() {
 	if _, ok := Finders[DATABASE]; !ok {
-		Finders[DATABASE] = make(map[string]SoftwareFinder)
+		Finders[DATABASE] = make(map[SwName]SoftwareFinder)
 	}
-	Finders[DATABASE]["mongo"] = NewMongoFindler()
+	Finders[DATABASE][Mongo] = NewMongoFindler()
 }
 func NewMongoFindler() *MongoFindler {
 	return &MongoFindler{}
 }
 
-func (m MongoFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)) bool {
+func (m MongoFindler) Verify(ctx context.Context, c *Container, thisis func(*Process, SoftwareFinder)) (bool, error) {
 	var hit bool
 
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var exe string
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		stdout, err := ps.Run(
-			command.EnterProcessNsRun(ps.Pid(), []string{exe, "-h"}))
+			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-h"}))
 		if err != nil {
 			return err
 		}
@@ -44,12 +48,14 @@ func (m MongoFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)
 		}
 		return
 	})
-	return hit
+	return hit, err
 }
 
-func (m MongoFindler) GetSoftware(c *Container) ([]*Software, error) {
+func (m MongoFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {
 	var softwares []*Software
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	log.Logger.Debugf("Start verify mongodb:%s", c.Id)
+	defer log.Logger.Debugf("Finish verify mongodb:%s", c.Id)
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var software = &Software{
 			Name:         "mongo",
 			Type:         DATABASE,
@@ -60,40 +66,40 @@ func (m MongoFindler) GetSoftware(c *Container) ([]*Software, error) {
 			ConfigPath:   "",
 		}
 		var exe string
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		software.BinaryPath = exe
-		software.BindEndpoint, err = GetEndpoint(ps)
+		software.BindEndpoint, err = GetEndpoint(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ps)
+		software.User, err = GetRunUser(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.Version, err = getMongoVersion(ps, exe)
+		software.Version, err = getMongoVersion(ctx, ps, exe)
 		if err != nil {
 			return err
 		}
-		software.ConfigPath, err = getMongoConfig(ps)
+		software.ConfigPath, err = getMongoConfig(ctx, ps)
 		if err != nil {
 			return err
 		}
 		softwares = append(softwares, software)
 		return nil
 	})
-	return softwares, nil
+	return softwares, err
 }
 
-func getMongoVersion(ps process.Process, exe string) (string, error) {
+func getMongoVersion(ctx context.Context, ps process.Process, exe string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
 	stdout, err = ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{exe, "-version"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-version"}),
 	)
 	if err != nil {
 		return "", err
@@ -109,7 +115,7 @@ func getMongoVersion(ps process.Process, exe string) (string, error) {
 
 }
 
-func getMongoConfig(ps process.Process) (string, error) {
+func getMongoConfig(ctx context.Context, ps process.Process) (string, error) {
 	cmdline, err := ps.Cmdline()
 	if err != nil {
 		return "", err
@@ -129,7 +135,7 @@ func getMongoConfig(ps process.Process) (string, error) {
 		stdout *bytes.Buffer
 	)
 	stdout, err = ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{"find", "/", "-name", "mongod.conf"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-name", "mongod.conf"}),
 	)
 	if err != nil {
 		return "", err

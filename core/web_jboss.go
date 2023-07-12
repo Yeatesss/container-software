@@ -2,39 +2,44 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"regexp"
 	"strings"
 
 	"github.com/Yeatesss/container-software/pkg/command"
+	"github.com/Yeatesss/container-software/pkg/log"
 
 	"github.com/Yeatesss/container-software/pkg/proc/process"
 )
 
 var _ SoftwareFinder = &JbossFindler{}
 
+const Jboss SwName = "jboss"
+
 type JbossFindler struct{}
 
 func init() {
 	if _, ok := Finders[WEB]; !ok {
-		Finders[WEB] = make(map[string]SoftwareFinder)
+		Finders[WEB] = make(map[SwName]SoftwareFinder)
 	}
-	Finders[WEB]["jboss"] = NewJbossFindler()
+	Finders[WEB][Jboss] = NewJbossFindler()
 }
 func NewJbossFindler() *JbossFindler {
 	return &JbossFindler{}
 }
 
-func (m JbossFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)) bool {
+func (m JbossFindler) Verify(ctx context.Context, c *Container, thisis func(*Process, SoftwareFinder)) (bool, error) {
 	var hit bool
-
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	log.Logger.Debugf("Start verify jboss:%s", c.Id)
+	defer log.Logger.Debugf("Finish verify jboss:%s", c.Id)
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var exe string
-		exe, err = process.GetProcessExe(ps)
+		exe, err = process.GetProcessExe(ctx, ps)
 		if err != nil {
 			return
 		}
 		stdout, err := ps.Run(
-			command.EnterProcessNsRun(ps.Pid(), []string{"env", c.EnvPath, "." + exe, "--version", "2>&1"}))
+			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"env", c.EnvPath, "." + exe, "--version", "2>&1"}))
 		if err != nil {
 			return err
 		}
@@ -45,12 +50,12 @@ func (m JbossFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)
 		}
 		return
 	})
-	return hit
+	return hit, err
 }
 
-func (m JbossFindler) GetSoftware(c *Container) ([]*Software, error) {
+func (m JbossFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {
 	var softwares []*Software
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var software = &Software{
 			Name:         "jboss",
 			Type:         WEB,
@@ -63,40 +68,40 @@ func (m JbossFindler) GetSoftware(c *Container) ([]*Software, error) {
 		var (
 			exe string
 		)
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		software.BinaryPath = exe
 		for _, pid := range append([]int64{ps.Pid()}, ps.ChildPids()...) {
-			endpoints, e := GetEndpoint(process.NewProcess(pid, nil))
+			endpoints, e := GetEndpoint(ctx, process.NewProcess(pid, nil))
 			if e != nil {
 				continue
 			}
 			software.BindEndpoint = append(software.BindEndpoint, endpoints...)
 		}
-		software.User, err = GetRunUser(ps)
+		software.User, err = GetRunUser(ctx, ps)
 		if err != nil {
 			return err
 		}
 
-		software.Version, software.ConfigPath, err = getJbossVersionAndConfig(c.EnvPath, ps)
+		software.Version, software.ConfigPath, err = getJbossVersionAndConfig(ctx, c.EnvPath, ps)
 		if err != nil {
 			return err
 		}
 		softwares = append(softwares, software)
 		return nil
 	})
-	return softwares, nil
+	return softwares, err
 }
 
-func getJbossVersionAndConfig(envPath string, ps *Process) (version string, config string, err error) {
+func getJbossVersionAndConfig(ctx context.Context, envPath string, ps *Process) (version string, config string, err error) {
 	var (
 		exe string
 	)
-	exe, _ = process.GetProcessExe(ps)
+	exe, _ = process.GetProcessExe(ctx, ps)
 	stdout, _ := ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{"env", envPath, "." + exe, "--version", "2>&1"}))
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"env", envPath, "." + exe, "--version", "2>&1"}))
 	if strings.Contains(stdout.String(), "WildFly") {
 		re := regexp.MustCompile(`WildFly\s+Full\s+([\w\.]+)`)
 		c := re.FindStringSubmatch(stdout.String())
@@ -105,7 +110,7 @@ func getJbossVersionAndConfig(envPath string, ps *Process) (version string, conf
 		}
 	}
 	stdout, err = ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{"find", "/", "-name", "standalone.xml"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-name", "standalone.xml"}),
 	)
 	if err != nil {
 		return

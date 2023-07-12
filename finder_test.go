@@ -1,8 +1,14 @@
 package container_software
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"fmt"
+	"os/exec"
+	"strings"
 	"testing"
+	"time"
 
 	jsoniter "github.com/json-iterator/go"
 
@@ -21,8 +27,9 @@ func TestFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	find.Find(mockMysqlCtr)
+	find.Find(ctx, mockMysqlCtr)
 }
 
 func TestPostgrasqlFind(t *testing.T) {
@@ -38,8 +45,9 @@ func TestPostgrasqlFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	f, e := find.Find(mockMysqlCtr)
+	f, e := find.Find(ctx, mockMysqlCtr)
 	fmt.Println(jsoniter.MarshalToString(f))
 	fmt.Println(e)
 }
@@ -56,8 +64,9 @@ func TestMongoFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	f, e := find.Find(mockMongoCtr)
+	f, e := find.Find(ctx, mockMongoCtr)
 	fmt.Println(jsoniter.MarshalToString(f))
 	fmt.Println(e)
 }
@@ -78,8 +87,9 @@ func TestSqlServerFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	f, e := find.Find(mockMongoCtr)
+	f, e := find.Find(ctx, mockMongoCtr)
 	fmt.Println(jsoniter.MarshalToString(f))
 	fmt.Println(e)
 }
@@ -94,8 +104,9 @@ func TestSqliteFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	f, e := find.Find(mockSqliteCtr)
+	f, e := find.Find(ctx, mockSqliteCtr)
 	fmt.Println(jsoniter.MarshalToString(f))
 	fmt.Println(e)
 }
@@ -113,8 +124,9 @@ func TestRedisFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	f, e := find.Find(mockRedisCtr)
+	f, e := find.Find(ctx, mockRedisCtr)
 	fmt.Println(jsoniter.MarshalToString(f))
 	fmt.Println(e)
 }
@@ -129,9 +141,10 @@ func TestLighttpdFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	f, e := find.Find(mockLighttpdCtr)
-	ff, ee := find.Find(mockLighttpdCtr)
+	f, e := find.Find(ctx, mockLighttpdCtr)
+	ff, ee := find.Find(ctx, mockLighttpdCtr)
 	fmt.Println(f, e, ff, ee)
 }
 func TestNginxFind(t *testing.T) {
@@ -147,9 +160,10 @@ func TestNginxFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	f, e := find.Find(mockNginxCtr)
-	ff, ee := find.Find(mockNginxCtr)
+	f, e := find.Find(ctx, mockNginxCtr)
+	ff, ee := find.Find(ctx, mockNginxCtr)
 	fmt.Println(f, e, ff, ee)
 }
 func TestTomcatFind(t *testing.T) {
@@ -162,9 +176,10 @@ func TestTomcatFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	f, e := find.Find(mockLighttpdCtr)
-	ff, ee := find.Find(mockLighttpdCtr)
+	f, e := find.Find(ctx, mockLighttpdCtr)
+	ff, ee := find.Find(ctx, mockLighttpdCtr)
 	fmt.Println(f, e, ff, ee)
 }
 
@@ -181,8 +196,9 @@ func TestJbossFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	f, e := find.Find(mockJbossCtr)
+	f, e := find.Find(ctx, mockJbossCtr)
 	fmt.Println(jsoniter.MarshalToString(f))
 	fmt.Println(e)
 }
@@ -200,8 +216,195 @@ func TestApacheFind(t *testing.T) {
 			},
 		},
 	}
+	ctx := context.Background()
 	find := NewFinder()
-	f, e := find.Find(mockApacheCtr)
+	f, e := find.Find(ctx, mockApacheCtr)
 	fmt.Println(jsoniter.MarshalToString(f))
 	fmt.Println(e)
 }
+func TestFindPOD(t *testing.T) {
+
+	mockPODCtr := core.Container{
+		Id:      "00d46a62ae2bf5ddfa4cc0078dcea75cda088fabb943fa8e398ab5028e5d3914",
+		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+	}
+
+	fmt.Println(time.Now().Format("2006-01-02 15:04:05"))
+	ctx, _ := context.WithTimeout(context.Background(), 9999*time.Second)
+	//for i := 0; i <= 100; i++ {
+	//	eg.Go(func() error {
+	c := mockPODCtr
+	c.Processes = core.Processes{
+		&core.Process{
+			Process: process.NewProcess(93881, nil),
+		},
+		//&core.Process{
+		//	Process: process.NewProcess(6899, nil),
+		//},
+		//&core.Process{
+		//	Process: process.NewProcess(55829, nil),
+		//},
+	}
+	find := NewFinder()
+	f, e := find.Find(ctx, &c)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(e)
+
+	// 创建一个管道来捕获命令输出
+	//cmd := exec.CommandContext(ctx, "nsenter", "-t",
+	//	"5279",
+	//	"--pid",
+	//	"--uts",
+	//	"--ipc",
+	//	"--net",
+	//	"--mount",
+	//	"/pause",
+	//	"-help")
+	//stdout, err := cmd.StdoutPipe()
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
+	//stderr, err := cmd.StderrPipe()
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
+	//
+	//// 启动命令
+	//if err := cmd.Start(); err != nil {
+	//	fmt.Println(err)
+	//}
+	//go func() {
+	//	var buf bytes.Buffer
+	//	var buf1 bytes.Buffer
+	//	_, err = io.Copy(&buf1, stderr)
+	//	if err != nil {
+	//		fmt.Println("1111", err, buf1.String())
+	//	}
+	//	_, err = io.Copy(&buf, stdout)
+	//	if err != nil {
+	//		fmt.Println("2222", err, buf.String())
+	//	}
+	//	// 处理命令输出
+	//	output := buf.String()
+	//	fmt.Println(output)
+	//}()
+	//time.Sleep(20 * time.Second)
+	// 将命令输出复制到一个缓冲区
+
+	//go func() {
+	//	time.Sleep(6 * time.Second)
+	//	fmt.Println("sle")
+	//	fmt.Println(cmd.Process.Kill())
+	//}()
+	// 等待命令执行完成
+
+	//if err := cmd.Wait(); err != nil {
+	//	fmt.Println(2222)
+	//
+	//	log.Fatal(err)
+	//}
+	//fmt.Println(111)
+	//d, e := exec.Command("nsenter", "-t", "55828", "--pid", "--uts", "--ipc", "--net", "--mount", "getent", "passwd").CombinedOutput()
+	//fmt.Println(string(d), e)
+	//aaa := bytes.NewBuffer([]byte(`
+	//root:x:0:0:root:/root:/bin/bash
+	//daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+	//bin:x:2:2:bin:/bin:/usr/sbin/nologin
+	//sys:x:3:3:sys:/dev:/usr/sbin/nologin
+	//sync:x:4:65534:sync:/bin:/bin/sync
+	//games:x:5:60:games:/usr/games:/usr/sbin/nologin
+	//man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+	//lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+	//mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+	//news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+	//uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+	//proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+	//www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+	//backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+	//list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+	//irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin
+	//_apt:x:42:65534::/nonexistent:/usr/sbin/nologin
+	//nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+	//nginx:x:101:101:nginx user:/nonexistent:/bin/false
+	//`))
+	//var bufOut = &bytes.Buffer{}
+	//
+	//cmd := exec.Command("grep", "101")
+	//sp, e1 := cmd.StdinPipe()
+	//fmt.Println(e1)
+	//io.Copy(sp, aaa)
+	////cmd.Stdin = aaa
+	//o, e := cmd.StdoutPipe()
+	//
+	//err := cmd.Start() // 改成 Start 而不是 Run
+	//if err != nil {
+	//	return
+	//}
+	//fmt.Println(9090)
+	//fmt.Println(e)
+	//fmt.Println(io.Copy(bufOut, o))
+	//fmt.Println(bufOut.String())
+	//if err = cmd.Wait(); err != nil {
+	//	fmt.Println(1232312)
+	//}
+	//return
+	//runner := command.NewCmdRuner()
+	//a, b := runner.Run(
+	//	runner.NewExecCommand(context.Background(), "nsenter", "-t", "55724", "--pid", "--uts", "--ipc", "--net", "--mount", "/usr/sbin/nginx", "-V"),
+	//	//runner.NewExecCommand(context.Background(), "xargs", "echo"),
+	//)
+	//fmt.Println(a.String(), b)
+	////var buf = &bytes.Buffer{}
+	////cmd.Stdout = buf
+	//go func() {
+	//	time.Sleep(5 * time.Second)
+	//	fmt.Println(cmd.Process.Pid)
+	//	fmt.Println(cmd.Process.Kill())
+	//}()
+	//stdoutPipe, e := cmd.CombinedOutput()
+	//
+	//fmt.Println(string(stdoutPipe), e)
+	////go func() {
+	////	time.Sleep(6 * time.Second)
+	////	fmt.Println("stop")
+	////	out := &bytes.Buffer{}
+	////	fmt.Println(io.Copy(out, stdoutPipe))
+	////	fmt.Println(out.String())
+	////	stdoutPipe.Close()
+	////}()
+	//////
+	////io.Copy(os.Stdout)
+	////fmt.Println(cmd.Run())
+	//time.Sleep(8 * time.Second)
+	//fmt.Println(buf.String())
+
+}
+func TestCsds(t *testing.T) {
+	c, b := exec.Command("go", "env"), new(bytes.Buffer)
+	c.Stdout = b
+	c.Run()
+
+	s := bufio.NewScanner(b)
+	for s.Scan() {
+		if strings.Contains(s.Text(), "CACHE") {
+			println(s.Text())
+		}
+	}
+}
+
+//stdout, err := core.Process{
+//Process: process.NewProcess(5279, nil),
+//}.Run(
+//core.Process{
+//Process: process.NewProcess(5279, nil),
+//}.NewExecCommand(ctx, "nsenter", "-t",
+//"5279",
+//"--pid",
+//"--uts",
+//"--ipc",
+//"--net",
+//"--mount",
+//"/pause",
+//"-v"))
+//fmt.Println(stdout)
+//fmt.Println(err)

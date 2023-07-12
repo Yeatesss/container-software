@@ -2,9 +2,9 @@ package process
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 
 	"github.com/Yeatesss/container-software/pkg/command"
 )
@@ -12,7 +12,7 @@ import (
 var _ Process = &LinuxProcess{}
 
 type LinuxProcess struct {
-	command.CmdRuner
+	*command.CmdRuner
 	comm     *bytes.Buffer
 	cmd      *bytes.Buffer
 	cwd      *bytes.Buffer
@@ -33,12 +33,15 @@ func (p *LinuxProcess) Pid() int64 {
 func (p *LinuxProcess) ChildPids() []int64 {
 	return p.childPid
 }
-func (p *LinuxProcess) Comm() (exe *bytes.Buffer, err error) {
+func (p *LinuxProcess) SetChildPids(childPids []int64) {
+	p.childPid = childPids
+}
+func (p *LinuxProcess) Comm(ctx context.Context) (exe *bytes.Buffer, err error) {
 	if p.comm != nil {
 		return p.comm, nil
 	}
 	p.comm, err = p.Run(
-		exec.Command("cat", fmt.Sprintf("/proc/%d/comm", p.pid)),
+		p.NewExecCommand(ctx, "cat", fmt.Sprintf("/proc/%d/comm", p.pid)),
 	)
 	if err != nil {
 		return nil, err
@@ -57,28 +60,35 @@ func (p *LinuxProcess) Cmdline() (cmdline *bytes.Buffer, err error) {
 	p.cmd = bytes.NewBuffer(bytes.TrimSpace(tmpCmdline))
 	return p.cmd, nil
 }
-func (p *LinuxProcess) Cwd() (cwd *bytes.Buffer, err error) {
+func (p *LinuxProcess) Cwd(ctx context.Context) (cwd *bytes.Buffer, err error) {
 	if p.cwd != nil {
 		return p.cwd, nil
 	}
 	cwd, err = p.Run(
-		exec.Command("ls", "-l", fmt.Sprintf("/proc/%d/cwd", p.pid)),
+		p.NewExecCommand(ctx, "cat", fmt.Sprintf("/proc/%d/cwd", p.pid)),
 	)
+	if err != nil {
+		return nil, err
+	}
 	return bytes.NewBuffer(bytes.TrimSpace(cwd.Bytes())), nil
 }
-func (p *LinuxProcess) Exe() (exe *bytes.Buffer, err error) {
+func (p *LinuxProcess) Exe(ctx context.Context) (exe *bytes.Buffer, err error) {
 	if p.exe != nil {
 		return p.exe, nil
 	}
 	exe, err = p.Run(
-		exec.Command("ls", "-l", fmt.Sprintf("/proc/%d/exe", p.pid)),
+		p.NewExecCommand(ctx, "ls", "-l", fmt.Sprintf("/proc/%d/exe", p.pid)),
 	)
+	if err != nil {
+		fmt.Println("exe error:", fmt.Sprintf("/proc/%d/exe", p.pid))
+		return nil, err
+	}
 	return bytes.NewBuffer(bytes.TrimSpace(exe.Bytes())), nil
 }
-func (p *LinuxProcess) NsPids() ([]string, error) {
+func (p *LinuxProcess) NsPids(ctx context.Context) ([]string, error) {
 	var nsPids []string
 	stdout, err := p.CmdRuner.Run(
-		exec.Command("grep", "NSpid", fmt.Sprintf("/proc/%d/status", p.pid)),
+		p.NewExecCommand(ctx, "grep", "NSpid", fmt.Sprintf("/proc/%d/status", p.pid)),
 	)
 	if err != nil {
 		return nil, err

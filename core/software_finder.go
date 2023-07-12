@@ -2,11 +2,12 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Yeatesss/container-software/pkg/command"
 
@@ -14,16 +15,17 @@ import (
 )
 
 type SwType string
+type SwName string
 
 const (
 	DATABASE SwType = "database"
 	WEB      SwType = "web"
 )
 
-var Finders = make(map[SwType]map[string]SoftwareFinder)
+var Finders = make(map[SwType]map[SwName]SoftwareFinder)
 
 // GetSoftware Get the application through the container process
-func GetSoftware(c *Container) (softs []*Software, err error) {
+func GetSoftware(ctx context.Context, c *Container) (softs []*Software, err error) {
 	var finders = make(map[SoftwareFinder]*Container)
 	defer func() {
 		if e := recover(); e != nil {
@@ -49,7 +51,7 @@ func GetSoftware(c *Container) (softs []*Software, err error) {
 	})
 	for finderHandle, container := range finders {
 		if finderHandle != nil {
-			software, e := finderHandle.GetSoftware(container)
+			software, e := finderHandle.GetSoftware(ctx, container)
 			if e != nil {
 				return nil, e
 			}
@@ -63,19 +65,33 @@ func GetSoftware(c *Container) (softs []*Software, err error) {
 // SoftwareFinder Software finder,Verify is used to determine whether the current container has the software
 // through GetSoftware to obtain specific software information
 type SoftwareFinder interface {
-	Verify(c *Container, thisis func(*Process, SoftwareFinder)) bool
-	GetSoftware(c *Container) ([]*Software, error)
+	Verify(ctx context.Context, c *Container, thisis func(*Process, SoftwareFinder)) (bool, error)
+	GetSoftware(ctx context.Context, c *Container) ([]*Software, error)
 }
 type Processes []*Process
 
-func (l Processes) Range(f func(idx int, process *Process) error) (err error) {
+func (l Processes) Range(f func(idx int, process *Process) error) (hasErr error) {
+	var (
+		skipChilds = make(map[int64]bool, l.Len())
+	)
 	sort.SliceStable(l, func(i, j int) bool {
 		return l[i].Pid() < l[j].Pid()
 	})
 	for idx, ps := range l {
-		err = f(idx, ps)
-		if err != nil {
+		if _, ok := skipChilds[ps.Pid()]; ok {
 			continue
+		}
+		err := f(idx, ps)
+		if err != nil {
+			hasErr = err
+			continue
+		}
+
+		//Ignore child process fetching if complete data can be fetched from parent process
+		if len(ps.ChildPids()) > 0 {
+			for _, childPid := range ps.ChildPids() {
+				skipChilds[childPid] = true
+			}
 		}
 	}
 	return
@@ -113,14 +129,14 @@ func (p *Process) SetFinder(s SoftwareFinder) {
 	p._finder = s
 }
 
-func GetRunUser(ps process.Process) (string, error) {
+func GetRunUser(ctx context.Context, ps process.Process) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		nsPids []string
 		ids    []string
 		err    error
 	)
-	nsPids, err = ps.NsPids()
+	nsPids, err = ps.NsPids(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -129,18 +145,18 @@ func GetRunUser(ps process.Process) (string, error) {
 		for _, uidType := range []string{"Uid", "Gid"} {
 			idx++
 			stdout, err = ps.Run(
-				exec.Command("nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net", "--mount",
+				ps.NewExecCommand(ctx, "nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net", "--mount",
 					"cat", fmt.Sprintf("/proc/%s/status", nsPids[len(nsPids)-1])),
-				exec.Command("grep", uidType),
 			)
 			if err != nil {
 				return "", err
 			}
+			stdout = command.Grep(stdout, uidType)
 			id, _ := command.ReadField(stdout.Bytes(), 2)
 			if len(id) > 0 {
 				stdout, err = ps.Run(
-					command.EnterProcessNsRun(ps.Pid(), []string{"getent", "passwd"}),
-					exec.Command("awk", "-F:", fmt.Sprintf(`$%d==%s{print}`, idx, string(id))),
+					ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"getent", "passwd"}),
+					ps.NewExecCommand(ctx, "awk", "-F:", fmt.Sprintf(`$%d==%s{print}`, idx, string(id))),
 				)
 				if err != nil {
 					ids = append(ids, string(id))
@@ -160,7 +176,7 @@ func GetRunUser(ps process.Process) (string, error) {
 	return "", nil
 }
 
-func GetEndpoint(ps process.Process) ([]string, error) {
+func GetEndpoint(ctx context.Context, ps process.Process) ([]string, error) {
 	var (
 		stdout    *bytes.Buffer
 		err       error
@@ -168,14 +184,14 @@ func GetEndpoint(ps process.Process) ([]string, error) {
 	)
 
 	stdout, err = ps.Run(
-		exec.Command("nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "-n", "netstat", "-anp"),
-		exec.Command("grep", `tcp\|udp`),
-		exec.Command("grep", strconv.FormatInt(ps.Pid(), 10)),
-		exec.Command("grep", `LISTEN`),
+		ps.NewExecCommand(ctx, "nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "-n", "netstat", "-anp"),
 	)
 	if err != nil {
 		return []string{}, err
 	}
+	stdout = command.Grep(stdout, `tcp|udp`,
+		strconv.FormatInt(ps.Pid(), 10),
+		`LISTEN`)
 	endpointRaw := stdout.Bytes()
 	for {
 		if len(endpointRaw) == 0 {
@@ -191,4 +207,27 @@ func GetEndpoint(ps process.Process) ([]string, error) {
 
 	return endpoints, nil
 
+}
+
+type ProcessBoard struct {
+	total  int
+	rwlock sync.RWMutex
+}
+
+func NewProcessBoard(total int) *ProcessBoard {
+	return &ProcessBoard{
+		total:  total,
+		rwlock: sync.RWMutex{},
+	}
+}
+func (p *ProcessBoard) Get() int {
+	p.rwlock.RLock()
+	defer p.rwlock.RUnlock()
+	return p.total
+}
+func (p *ProcessBoard) Sub() {
+	p.rwlock.Lock()
+	defer p.rwlock.Unlock()
+	p.total--
+	return
 }

@@ -2,38 +2,43 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"strings"
 
 	"github.com/Yeatesss/container-software/pkg/command"
+	"github.com/Yeatesss/container-software/pkg/log"
 
 	"github.com/Yeatesss/container-software/pkg/proc/process"
 )
 
 var _ SoftwareFinder = &LighttpdFindler{}
 
+const Lighttpd SwName = "lighttpd"
+
 type LighttpdFindler struct{}
 
 func init() {
 	if _, ok := Finders[WEB]; !ok {
-		Finders[WEB] = make(map[string]SoftwareFinder)
+		Finders[WEB] = make(map[SwName]SoftwareFinder)
 	}
-	Finders[WEB]["lighttpd"] = NewLighttpdFindler()
+	Finders[WEB][Lighttpd] = NewLighttpdFindler()
 }
 func NewLighttpdFindler() *LighttpdFindler {
 	return &LighttpdFindler{}
 }
 
-func (m LighttpdFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)) bool {
+func (m LighttpdFindler) Verify(ctx context.Context, c *Container, thisis func(*Process, SoftwareFinder)) (bool, error) {
 	var hit bool
-
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	log.Logger.Debugf("Start verify lighttpd:%s", c.Id)
+	defer log.Logger.Debugf("Finish verify lighttpd:%s", c.Id)
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var exe string
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		stdout, err := ps.Run(
-			command.EnterProcessNsRun(ps.Pid(), []string{exe, "-V"}))
+			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-V"}))
 		if err != nil {
 			return err
 		}
@@ -44,12 +49,12 @@ func (m LighttpdFindler) Verify(c *Container, thisis func(*Process, SoftwareFind
 		}
 		return
 	})
-	return hit
+	return hit, err
 }
 
-func (m LighttpdFindler) GetSoftware(c *Container) ([]*Software, error) {
+func (m LighttpdFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {
 	var softwares []*Software
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var software = &Software{
 			Name:         "lighttpd",
 			Type:         WEB,
@@ -60,40 +65,40 @@ func (m LighttpdFindler) GetSoftware(c *Container) ([]*Software, error) {
 			ConfigPath:   "",
 		}
 		var exe string
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		software.BinaryPath = exe
-		software.BindEndpoint, err = GetEndpoint(ps)
+		software.BindEndpoint, err = GetEndpoint(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ps)
+		software.User, err = GetRunUser(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.Version, err = getLighttpdVersion(ps, exe)
+		software.Version, err = getLighttpdVersion(ctx, ps, exe)
 		if err != nil {
 			return err
 		}
-		software.ConfigPath, err = getLighttpdConfig(ps)
+		software.ConfigPath, err = getLighttpdConfig(ctx, ps)
 		if err != nil {
 			return err
 		}
 		softwares = append(softwares, software)
 		return nil
 	})
-	return softwares, nil
+	return softwares, err
 }
 
-func getLighttpdVersion(ps process.Process, exe string) (string, error) {
+func getLighttpdVersion(ctx context.Context, ps process.Process, exe string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
 	stdout, err = ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{exe, "-V"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-V"}),
 	)
 	if err != nil {
 		return "", err
@@ -107,7 +112,7 @@ func getLighttpdVersion(ps process.Process, exe string) (string, error) {
 
 }
 
-func getLighttpdConfig(ps process.Process) (string, error) {
+func getLighttpdConfig(ctx context.Context, ps process.Process) (string, error) {
 	var configs []string
 	cmdline, err := ps.Cmdline()
 	if err != nil {
@@ -128,7 +133,7 @@ func getLighttpdConfig(ps process.Process) (string, error) {
 		stdout *bytes.Buffer
 	)
 	stdout, err = ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{"find", "/", "-name", "lighttpd.conf"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-name", "lighttpd.conf"}),
 	)
 	if err != nil {
 		return "", err

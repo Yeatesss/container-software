@@ -1,6 +1,7 @@
 package container_software
 
 import (
+	"context"
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
@@ -29,44 +30,69 @@ func NewFinder() *Finder {
 	return &Finder{Cache{ctrCache: ctrCache}}
 }
 
-func (l *Finder) Find(c *core.Container, onlyTypes ...core.SwType) (softwares []*core.Software, err error) {
+func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface{}) (softwares []*core.Software, err error) {
 	var (
-		hit                  bool
-		totalNumberProcesses = c.Processes.Len()
+		hit          bool
+		processBoard = core.NewProcessBoard(c.Processes.Len())
+		wg           sync.WaitGroup
 	)
 	if val, _ := l.ctrCache.Get([]byte(c.Id)); len(val) > 0 {
 		err = jsoniter.Unmarshal(val, &softwares)
 		return
 	}
-	var validContainer = func(finders map[string]core.SoftwareFinder) {
-		if totalNumberProcesses == 0 {
+	var validContainer = func(finder core.SoftwareFinder) {
+		if processBoard.Get() == 0 {
+			return
+		}
+		var is bool
+		if processBoard.Get() == 0 {
+			return
+		}
+		if is, err = finder.Verify(ctx, c, func(p *core.Process, finder core.SoftwareFinder) {
+			p.SetFinder(finder)
+		}); err == nil && is {
+			processBoard.Sub()
+			hit = true
+		}
+
+		return
+	}
+	var validContainers = func(finders map[core.SwName]core.SoftwareFinder) {
+		if processBoard.Get() == 0 {
 			return
 		}
 		for _, finder := range finders {
-			if totalNumberProcesses == 0 {
-				return
-			}
-			if finder.Verify(c, func(p *core.Process, finder core.SoftwareFinder) {
-				p.SetFinder(finder)
-			}) {
-				totalNumberProcesses--
-				hit = true
-			}
+			wg.Add(1)
+			go func(finder core.SoftwareFinder) {
+				defer wg.Done()
+				validContainer(finder)
+			}(finder)
 		}
+		wg.Wait()
 		return
 	}
-	if len(onlyTypes) > 0 {
-		for _, onlyType := range onlyTypes {
-			validContainer(core.Finders[onlyType])
+
+	if len(onlys) > 0 {
+		for _, only := range onlys {
+			switch v := only.(type) {
+			case core.SwType:
+				validContainers(core.Finders[v])
+			case core.SwName:
+				for _, finders := range core.Finders {
+					if finder, ok := finders[v]; ok {
+						validContainer(finder)
+					}
+				}
+			}
 		}
 	} else {
 		for _, finders := range core.Finders {
-			validContainer(finders)
+			validContainers(finders)
 		}
 	}
 	if hit {
 		var softwaresByte []byte
-		softwares, err = core.GetSoftware(c)
+		softwares, err = core.GetSoftware(ctx, c)
 		if err != nil {
 			return
 		}

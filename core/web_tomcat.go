@@ -2,32 +2,37 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"path"
 	"strings"
 
 	"github.com/Yeatesss/container-software/pkg/command"
+	"github.com/Yeatesss/container-software/pkg/log"
 
 	"github.com/Yeatesss/container-software/pkg/proc/process"
 )
 
 var _ SoftwareFinder = &TomcatFindler{}
 
+const Tomcat SwName = "tomcat"
+
 type TomcatFindler struct{}
 
 func init() {
 	if _, ok := Finders[WEB]; !ok {
-		Finders[WEB] = make(map[string]SoftwareFinder)
+		Finders[WEB] = make(map[SwName]SoftwareFinder)
 	}
-	Finders[WEB]["tomcat"] = NewTomcatFindler()
+	Finders[WEB][Tomcat] = NewTomcatFindler()
 }
 func NewTomcatFindler() *TomcatFindler {
 	return &TomcatFindler{}
 }
 
-func (m TomcatFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)) bool {
+func (m TomcatFindler) Verify(ctx context.Context, c *Container, thisis func(*Process, SoftwareFinder)) (bool, error) {
 	var hit bool
-
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	log.Logger.Debugf("Start verify tomcat:%s", c.Id)
+	defer log.Logger.Debugf("Finish verify tomcat:%s", c.Id)
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var cmdline *bytes.Buffer
 		cmdline, err = ps.Cmdline()
 		if err != nil {
@@ -40,12 +45,12 @@ func (m TomcatFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder
 		}
 		return
 	})
-	return hit
+	return hit, err
 }
 
-func (m TomcatFindler) GetSoftware(c *Container) ([]*Software, error) {
+func (m TomcatFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {
 	var softwares []*Software
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var software = &Software{
 			Name:         "tomcat",
 			Type:         WEB,
@@ -58,31 +63,31 @@ func (m TomcatFindler) GetSoftware(c *Container) ([]*Software, error) {
 		var (
 			exe string
 		)
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		software.BinaryPath = exe
-		software.BindEndpoint, err = GetEndpoint(ps)
+		software.BindEndpoint, err = GetEndpoint(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ps)
+		software.User, err = GetRunUser(ctx, ps)
 		if err != nil {
 			return err
 		}
 
-		software.Version, software.ConfigPath, err = getTomcatVersionAndConfig(c.EnvPath, ps)
+		software.Version, software.ConfigPath, err = getTomcatVersionAndConfig(ctx, c.EnvPath, ps)
 		if err != nil {
 			return err
 		}
 		softwares = append(softwares, software)
 		return nil
 	})
-	return softwares, nil
+	return softwares, err
 }
 
-func getTomcatVersionAndConfig(envPath string, ps *Process) (version string, config string, err error) {
+func getTomcatVersionAndConfig(ctx context.Context, envPath string, ps *Process) (version string, config string, err error) {
 	var (
 		base              string
 		findVersionStdout *bytes.Buffer
@@ -90,7 +95,7 @@ func getTomcatVersionAndConfig(envPath string, ps *Process) (version string, con
 	)
 
 	findVersionStdout, err = ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{"find", "/", "-name", "version.sh"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-name", "version.sh"}),
 	)
 	if err != nil {
 		return
@@ -112,16 +117,19 @@ func getTomcatVersionAndConfig(envPath string, ps *Process) (version string, con
 	}
 LOOP:
 	for _, run := range runLine {
-		var stdout []byte
-		stdout, err := command.EnterProcessNsRun(ps.Pid(), []string{"env", envPath, "." + run}).CombinedOutput()
+		var stdoutBuf *bytes.Buffer
+		stdoutBuf, err := ps.Run(
+			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"env", envPath, "." + run}),
+		)
 		if err != nil {
 			continue
 		}
-		if strings.Contains(string(stdout), "Tomcat") {
+		if strings.Contains(stdoutBuf.String(), "Tomcat") {
 			var (
 				versionByte []byte
 				val         []byte
 			)
+			stdout := stdoutBuf.Bytes()
 			for len(stdout) > 0 {
 				val = command.ReadLine(stdout)
 				if base == "" {
@@ -140,8 +148,11 @@ LOOP:
 	}
 	if base != "" {
 		ImagineConf := path.Join(base, "conf/context.xml")
-		stdout, err := command.EnterProcessNsRun(ps.Pid(), []string{"ls", "-l", ImagineConf}).CombinedOutput()
-		if err == nil && len(stdout) > 0 {
+		var stdoutBuf *bytes.Buffer
+		stdoutBuf, err := ps.Run(
+			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"ls", "-l", ImagineConf}),
+		)
+		if err == nil && stdoutBuf.Len() > 0 {
 			config = ImagineConf
 		}
 	}

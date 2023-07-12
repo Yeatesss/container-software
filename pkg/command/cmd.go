@@ -2,42 +2,132 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/Yeatesss/container-software/pkg/log"
 
 	"github.com/pkg/errors"
 )
 
+var cmdTimeout = time.Duration(10)
+var DefaultCmdRunner = CmdRuner{
+	timeout: cmdTimeout * time.Second,
+	cache:   make(map[string]string),
+	lock:    sync.Mutex{},
+}
+
 type CmdRuner struct {
-	cache map[string]string
+	timeout time.Duration
+	cache   map[string]string
+	lock    sync.Mutex
 }
 
-func NewCmdRuner() CmdRuner {
-	return CmdRuner{cache: make(map[string]string)}
+func (p *CmdRuner) NewExecCommand(ctx context.Context, name string, arg ...string) func() (*exec.Cmd, context.CancelFunc) {
+	return func() (*exec.Cmd, context.CancelFunc) {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.timeout)
+		cmd := exec.CommandContext(ctx, name, arg...)
+		return cmd, cancel
+	}
 }
-func EnterProcessNsRun(pid int64, cmdStrs []string) *exec.Cmd {
+func (p *CmdRuner) NewExecCommandWithEnv(ctx context.Context, name string, arg []string, envs ...string) func() (*exec.Cmd, context.CancelFunc) {
+	return func() (*exec.Cmd, context.CancelFunc) {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.timeout)
+		cmd := exec.CommandContext(ctx, name, arg...)
+		cmd.Env = envs
+		return cmd, cancel
+	}
+}
+func (p *CmdRuner) fromCache(cmd string) (string, bool) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	res, ok := p.cache[cmd]
+	return res, ok
+}
+
+func (p *CmdRuner) setCache(cmd string, result string) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.cache[cmd] = result
+	return
+}
+
+type Option func(*CmdRuner) *CmdRuner
+
+var WithTimeout = func(timeoutSecond int64) func(runer *CmdRuner) *CmdRuner {
+	return func(runer *CmdRuner) *CmdRuner {
+		runer.timeout = time.Duration(timeoutSecond) * time.Second
+		return runer
+	}
+}
+
+func NewCmdRuner(options ...Option) *CmdRuner {
+	runner := &CmdRuner{
+		timeout: cmdTimeout * time.Second,
+		cache:   make(map[string]string),
+		lock:    sync.Mutex{},
+	}
+	for _, option := range options {
+		runner = option(runner)
+	}
+	return runner
+}
+func (p *CmdRuner) EnterProcessNsRun(ctx context.Context, pid int64, cmdStrs []string, envs ...string) func() (*exec.Cmd, context.CancelFunc) {
 	cmds := append([]string{"-t", strconv.FormatInt(pid, 10), "--pid", "--uts", "--ipc", "--net", "--mount"}, cmdStrs...)
-
-	return exec.Command("nsenter", cmds...)
+	return p.NewExecCommandWithEnv(ctx, "nsenter", cmds, envs...)
 }
+func Grep(stdout *bytes.Buffer, filters ...string) *bytes.Buffer {
+	var res = &bytes.Buffer{} // 创建一个新的bytes.Buffer
 
-func (p CmdRuner) Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
+	if stdout != nil {
+		cmdByte := stdout.Bytes()
+		for len(cmdByte) > 0 {
+			line := ReadLine(cmdByte)
+			for _, filter := range filters {
+				cfilters := strings.Split(filter, "|")
+				for _, cfilter := range cfilters {
+					if bytes.Contains(line, []byte(cfilter)) {
+						res.Write(line)     // 将符合预期的值写入res
+						res.WriteByte('\n') // 添加换行符
+					}
+				}
+			}
+			cmdByte = NextLine(cmdByte)
+		}
+	}
+	return res
+}
+func (p *CmdRuner) Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdout *bytes.Buffer, err error) {
 	var cmdStr bytes.Buffer
-	for _, cmd := range cmdS {
+	var cmdS []*exec.Cmd
+	for _, f := range cmdFuncs {
+		cmd, _ := f()
+		cmdS = append(cmdS, cmd)
 		cmdStr.WriteString(cmd.String())
 	}
 	defer func() {
 		if stdout != nil {
-			p.cache[cmdStr.String()] = stdout.String()
+			p.setCache(cmdStr.String(), stdout.String())
 		}
 	}()
-	if v, ok := p.cache[cmdStr.String()]; ok {
+
+	if v, ok := p.fromCache(cmdStr.String()); ok {
 		return bytes.NewBuffer([]byte(v)), nil
 	}
-	stdout, err = p.cmdPipeRun(cmdS...)
+
+	stdout, err = p.cmdPipeRun(cmdS)
+
+	if err != nil && stdout == nil {
+		return nil, err
+	}
 	if err = parseExitError(err); err != nil {
 		return stdout, err
 	}
@@ -59,52 +149,67 @@ func parseExitError(err error) error {
 	}
 	return err
 }
-func (p CmdRuner) cmdPipeRun(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error) {
-	var out io.ReadCloser
-	var in io.WriteCloser
-	for i, cmd := range cmdS {
-		if i > 0 {
-			// 上一个指令的输出
-			out, err = cmdS[i-1].StdoutPipe()
-			if err != nil {
-				return
-			}
-			// 当前指令的输入
-			in, err = cmd.StdinPipe()
-			if err != nil {
-				return
-			}
-			// 阻塞指令进行，直到 Close()
-			go cmdPipe(cmdS[i-1], out, in)
+
+func (p *CmdRuner) cmdPipeRun(cmdS []*exec.Cmd) (out *bytes.Buffer, err error) {
+	out = &bytes.Buffer{}
+	var stdout io.ReadCloser
+	var stderr io.ReadCloser
+	defer func() {
+		stdout.Close()
+		stderr.Close()
+	}()
+	var bufByte []byte
+	for idx := 0; idx < len(cmdS); idx++ {
+		idx := idx
+		if idx > 0 {
+			cmdS[idx].Stdin = bytes.NewBuffer(bufByte)
 		}
-		if i == len(cmdS)-1 {
-			stdout = SetCommandStd(cmd)
-		}
-	}
-	for _, cmd := range cmdS {
-		err = cmd.Run()
+		stdout, err = cmdS[idx].StdoutPipe()
 		if err != nil {
 			return
 		}
+		stderr, err = cmdS[idx].StderrPipe()
+		if err != nil {
+			return
+		}
+		err = cmdS[idx].Start()
+		if err != nil {
+			return
+		}
+		out = &bytes.Buffer{}
+		ret := make(chan error, 1)
+		go CopyStd(ret, out, stdout)
+		fuse := NewTimer(p.timeout)
+		select {
+		case e := <-ret:
+			log.Logger.Debug("copy stdout success")
+			if e != nil {
+				log.Logger.Error("copy stdout fail:", e)
+				return
+			}
+			if out.Len() == 0 {
+				io.Copy(out, stderr)
+			}
+			bufByte = out.Bytes()
+		case <-fuse.C:
+			log.Logger.Debug("Get Stdout Timeout")
+			return
+		}
+
+		if err = cmdS[idx].Wait(); err != nil {
+			return nil, err
+		}
+
 	}
 	return
 }
-
-func cmdPipe(cmd *exec.Cmd, r io.ReadCloser, w io.WriteCloser) {
-	defer func() {
-		_ = r.Close()
-		_ = w.Close()
-	}()
-	_, err := io.Copy(w, r)
-	if err != nil {
-		fmt.Println("error: ", err)
-	}
-	return
+func CopyStd(ret chan error, dst *bytes.Buffer, std io.ReadCloser) {
+	defer close(ret)
+	_, err := io.Copy(dst, std)
+	ret <- err
 }
 
-func SetCommandStd(cmd *exec.Cmd) (stdout *bytes.Buffer) {
-	stdout = &bytes.Buffer{}
-	cmd.Stdout = stdout
-	cmd.Stderr = stdout
-	return
+func NewTimer(expire time.Duration) *time.Timer {
+	return time.NewTimer(expire)
+
 }

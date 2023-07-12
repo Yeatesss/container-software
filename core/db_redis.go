@@ -2,38 +2,43 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"strings"
 
 	"github.com/Yeatesss/container-software/pkg/command"
+	"github.com/Yeatesss/container-software/pkg/log"
 
 	"github.com/Yeatesss/container-software/pkg/proc/process"
 )
 
 var _ SoftwareFinder = &RedisFindler{}
 
+const Redis SwName = "redis"
+
 type RedisFindler struct{}
 
 func init() {
 	if _, ok := Finders[DATABASE]; !ok {
-		Finders[DATABASE] = make(map[string]SoftwareFinder)
+		Finders[DATABASE] = make(map[SwName]SoftwareFinder)
 	}
-	Finders[DATABASE]["redis"] = NewRedisFindler()
+	Finders[DATABASE][Redis] = NewRedisFindler()
 }
 func NewRedisFindler() *RedisFindler {
 	return &RedisFindler{}
 }
 
-func (m RedisFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)) bool {
+func (m RedisFindler) Verify(ctx context.Context, c *Container, thisis func(*Process, SoftwareFinder)) (bool, error) {
 	var hit bool
-
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	log.Logger.Debugf("Start verify redis:%s", c.Id)
+	defer log.Logger.Debugf("Finish verify redis:%s", c.Id)
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var exe string
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		stdout, err := ps.Run(
-			command.EnterProcessNsRun(ps.Pid(), []string{exe, "-v"}))
+			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-v"}))
 		if err != nil {
 			return err
 		}
@@ -44,12 +49,12 @@ func (m RedisFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)
 		}
 		return
 	})
-	return hit
+	return hit, err
 }
 
-func (m RedisFindler) GetSoftware(c *Container) ([]*Software, error) {
+func (m RedisFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {
 	var softwares []*Software
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var software = &Software{
 			Name:         "redis",
 			Type:         DATABASE,
@@ -60,40 +65,40 @@ func (m RedisFindler) GetSoftware(c *Container) ([]*Software, error) {
 			ConfigPath:   "",
 		}
 		var exe string
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		software.BinaryPath = exe
-		software.BindEndpoint, err = GetEndpoint(ps)
+		software.BindEndpoint, err = GetEndpoint(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ps)
+		software.User, err = GetRunUser(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.Version, err = getRedisVersion(ps, exe)
+		software.Version, err = getRedisVersion(ctx, ps, exe)
 		if err != nil {
 			return err
 		}
-		software.ConfigPath, err = getRedisConfig(ps)
+		software.ConfigPath, err = getRedisConfig(ctx, ps)
 		if err != nil {
 			return err
 		}
 		softwares = append(softwares, software)
 		return nil
 	})
-	return softwares, nil
+	return softwares, err
 }
 
-func getRedisVersion(ps process.Process, exe string) (string, error) {
+func getRedisVersion(ctx context.Context, ps process.Process, exe string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
 	stdout, err = ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{exe, "-v"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-v"}),
 	)
 	if err != nil {
 		return "", err
@@ -110,13 +115,13 @@ func getRedisVersion(ps process.Process, exe string) (string, error) {
 
 }
 
-func getRedisConfig(ps process.Process) (string, error) {
+func getRedisConfig(ctx context.Context, ps process.Process) (string, error) {
 	var cmdlineByte []byte
 	cmdline, err := ps.Cmdline()
 	if err != nil {
 		return "", err
 	}
-	comm, _ := ps.Comm()
+	comm, _ := ps.Comm(ctx)
 	commIdx := bytes.Index(cmdline.Bytes(), comm.Bytes())
 	if commIdx >= 0 {
 		cmdlineByte = bytes.ReplaceAll(cmdline.Bytes()[commIdx:], comm.Bytes(), []byte{})

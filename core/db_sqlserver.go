@@ -2,39 +2,43 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"os/exec"
 	"strings"
 
 	"github.com/Yeatesss/container-software/pkg/command"
+	"github.com/Yeatesss/container-software/pkg/log"
 
 	"github.com/Yeatesss/container-software/pkg/proc/process"
 )
 
 var _ SoftwareFinder = &SqlServerFindler{}
 
+const Sqlserver SwName = "sqlserver"
+
 type SqlServerFindler struct{}
 
 func init() {
 	if _, ok := Finders[DATABASE]; !ok {
-		Finders[DATABASE] = make(map[string]SoftwareFinder)
+		Finders[DATABASE] = make(map[SwName]SoftwareFinder)
 	}
-	Finders[DATABASE]["sqlserver"] = NewSqlServerFindler()
+	Finders[DATABASE][Sqlserver] = NewSqlServerFindler()
 }
 func NewSqlServerFindler() *SqlServerFindler {
 	return &SqlServerFindler{}
 }
 
-func (m SqlServerFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)) bool {
+func (m SqlServerFindler) Verify(ctx context.Context, c *Container, thisis func(*Process, SoftwareFinder)) (bool, error) {
 	var hit bool
-
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	log.Logger.Debugf("Start verify sqlserver:%s", c.Id)
+	defer log.Logger.Debugf("Finish verify sqlserver:%s", c.Id)
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var exe string
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
-		cmd := command.EnterProcessNsRun(ps.Pid(), []string{exe, "-v"})
-		cmd.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+		cmd := ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-v"}, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
 		stdout, err := ps.Run(cmd)
 		if err != nil {
 			//TODO:Don't know why it returns a correct result and also returns an err
@@ -51,12 +55,12 @@ func (m SqlServerFindler) Verify(c *Container, thisis func(*Process, SoftwareFin
 		}
 		return
 	})
-	return hit
+	return hit, err
 }
 
-func (m SqlServerFindler) GetSoftware(c *Container) ([]*Software, error) {
+func (m SqlServerFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {
 	var softwares []*Software
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var software = &Software{
 			Name:         "sqlserver",
 			Type:         DATABASE,
@@ -67,20 +71,20 @@ func (m SqlServerFindler) GetSoftware(c *Container) ([]*Software, error) {
 			ConfigPath:   "",
 		}
 		var exe string
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		software.BinaryPath = exe
-		software.BindEndpoint, err = GetEndpoint(ps)
+		software.BindEndpoint, err = GetEndpoint(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ps)
+		software.User, err = GetRunUser(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.Version, err = getSqlServerVersion(ps, exe)
+		software.Version, err = getSqlServerVersion(ctx, ps, exe)
 		if err != nil {
 			return err
 		}
@@ -91,16 +95,16 @@ func (m SqlServerFindler) GetSoftware(c *Container) ([]*Software, error) {
 		softwares = append(softwares, software)
 		return nil
 	})
-	return softwares, nil
+	return softwares, err
 }
 
-func getSqlServerVersion(ps process.Process, exe string) (string, error) {
+func getSqlServerVersion(ctx context.Context, ps process.Process, exe string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
 	stdout, err = ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{exe, "-v"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-v"}),
 	)
 	if err != nil {
 		return "", err

@@ -2,39 +2,44 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"regexp"
 	"strings"
 
 	"github.com/Yeatesss/container-software/pkg/command"
+	"github.com/Yeatesss/container-software/pkg/log"
 
 	"github.com/Yeatesss/container-software/pkg/proc/process"
 )
 
 var _ SoftwareFinder = &NginxFindler{}
 
+const Nginx SwName = "nginx"
+
 type NginxFindler struct{}
 
 func init() {
 	if _, ok := Finders[WEB]; !ok {
-		Finders[WEB] = make(map[string]SoftwareFinder)
+		Finders[WEB] = make(map[SwName]SoftwareFinder)
 	}
-	Finders[WEB]["nginx"] = NewNginxFindler()
+	Finders[WEB][Nginx] = NewNginxFindler()
 }
 func NewNginxFindler() *NginxFindler {
 	return &NginxFindler{}
 }
 
-func (m NginxFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)) bool {
+func (m NginxFindler) Verify(ctx context.Context, c *Container, thisis func(*Process, SoftwareFinder)) (bool, error) {
 	var hit bool
-
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	log.Logger.Debugf("Start verify nginx:%s", c.Id)
+	defer log.Logger.Debugf("Finish verify nginx:%s", c.Id)
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var exe string
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		stdout, err := ps.Run(
-			command.EnterProcessNsRun(ps.Pid(), []string{exe, "-V"}))
+			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-V"}))
 		if err != nil {
 			return err
 		}
@@ -45,12 +50,12 @@ func (m NginxFindler) Verify(c *Container, thisis func(*Process, SoftwareFinder)
 		}
 		return
 	})
-	return hit
+	return hit, err
 }
 
-func (m NginxFindler) GetSoftware(c *Container) ([]*Software, error) {
+func (m NginxFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {
 	var softwares []*Software
-	_ = c.Processes.Range(func(_ int, ps *Process) (err error) {
+	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
 		var software = &Software{
 			Name:         "nginx",
 			Type:         WEB,
@@ -61,40 +66,40 @@ func (m NginxFindler) GetSoftware(c *Container) ([]*Software, error) {
 			ConfigPath:   "",
 		}
 		var exe string
-		exe, err = process.GetProcessExe(ps.Process)
+		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
 			return
 		}
 		software.BinaryPath = exe
-		software.BindEndpoint, err = GetEndpoint(ps)
+		software.BindEndpoint, err = GetEndpoint(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ps)
+		software.User, err = GetRunUser(ctx, ps)
 		if err != nil {
 			return err
 		}
-		software.Version, err = getNginxVersion(ps, exe)
+		software.Version, err = getNginxVersion(ctx, ps, exe)
 		if err != nil {
 			return err
 		}
-		software.ConfigPath, err = getNginxConfig(ps, exe)
+		software.ConfigPath, err = getNginxConfig(ctx, ps, exe)
 		if err != nil {
 			return err
 		}
 		softwares = append(softwares, software)
 		return nil
 	})
-	return softwares, nil
+	return softwares, err
 }
 
-func getNginxVersion(ps process.Process, exe string) (string, error) {
+func getNginxVersion(ctx context.Context, ps process.Process, exe string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
 	stdout, err = ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{exe, "-V"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-V"}),
 	)
 	if err != nil {
 		return "", err
@@ -108,13 +113,13 @@ func getNginxVersion(ps process.Process, exe string) (string, error) {
 
 }
 
-func getNginxConfig(ps process.Process, exe string) (string, error) {
+func getNginxConfig(ctx context.Context, ps process.Process, exe string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		err    error
 	)
 	stdout, err = ps.Run(
-		command.EnterProcessNsRun(ps.Pid(), []string{exe, "-t"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-t"}),
 	)
 	if err != nil {
 		return "", err

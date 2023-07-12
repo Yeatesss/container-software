@@ -1,8 +1,12 @@
 package process
 
 import (
+	"context"
 	"fmt"
+	"os/exec"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func TestGetProcessExe(t *testing.T) {
@@ -52,5 +56,8 @@ func TestGetProcessExe(t *testing.T) {
 }
 
 func TestNsPids(t *testing.T) {
-	fmt.Println(NewProcess(2874135, nil).NsPids())
+	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+	a, b := exec.CommandContext(ctx, "nsenter", "-t", strconv.FormatInt(330375, 10), "--pid", "--uts", "--ipc", "--net", "--mount", "/opt/mssql/bin/sqlservr", "-v").CombinedOutput()
+	fmt.Println(string(a), b)
+	//fmt.Println(NewProcess(2874135, nil).NsPids())
 }

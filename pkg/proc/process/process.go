@@ -2,6 +2,7 @@ package process
 
 import (
 	"bytes"
+	"context"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -13,14 +14,14 @@ import (
 )
 
 // GetExe Get the full path to the current process executable
-func GetProcessExe(process Process) (string, error) {
+func GetProcessExe(ctx context.Context, process Process) (string, error) {
 	var (
 		cmdline     *bytes.Buffer
 		cmdlineByte []byte
 		exePath     []byte
 		commStr     string
 	)
-	comm, err := process.Comm()
+	comm, err := process.Comm(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -41,7 +42,7 @@ func GetProcessExe(process Process) (string, error) {
 		if len(exePath) > 0 {
 			if !filepath.IsAbs(string(exePath)) {
 				var cwd *bytes.Buffer
-				cwd, err = process.Cwd()
+				cwd, err = process.Cwd(ctx)
 				if err != nil {
 					return "", errors.Wrap(err, "Failed to get process CWD")
 				}
@@ -56,7 +57,7 @@ func GetProcessExe(process Process) (string, error) {
 
 	default:
 		var exeBuf *bytes.Buffer
-		exeBuf, err = process.Exe()
+		exeBuf, err = process.Exe(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -78,7 +79,7 @@ func GetProcessExe(process Process) (string, error) {
 			}
 			var findStdOut *bytes.Buffer
 			findStdOut, err = process.Run(
-				command.EnterProcessNsRun(process.Pid(), []string{"find", "/", "-name", commStr}),
+				process.EnterProcessNsRun(ctx, process.Pid(), []string{"find", "/", "-name", commStr}),
 			)
 			if err != nil {
 				return "", err
@@ -103,14 +104,17 @@ func GetProcessExe(process Process) (string, error) {
 }
 
 type Process interface {
-	Run(cmdS ...*exec.Cmd) (stdout *bytes.Buffer, err error)
+	Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdout *bytes.Buffer, err error)
+	EnterProcessNsRun(ctx context.Context, pid int64, cmdStrs []string, envs ...string) func() (*exec.Cmd, context.CancelFunc)
+	NewExecCommand(ctx context.Context, name string, arg ...string) func() (*exec.Cmd, context.CancelFunc)
 	Pid() int64
 	ChildPids() []int64
-	Comm() (comm *bytes.Buffer, err error)
-	Cwd() (cwd *bytes.Buffer, err error)
+	SetChildPids([]int64)
+	Comm(ctx context.Context) (exe *bytes.Buffer, err error)
+	Cwd(ctx context.Context) (cwd *bytes.Buffer, err error)
 	Cmdline() (cmdline *bytes.Buffer, err error)
-	Exe() (exe *bytes.Buffer, err error)
-	NsPids() ([]string, error)
+	Exe(ctx context.Context) (exe *bytes.Buffer, err error)
+	NsPids(ctx context.Context) ([]string, error)
 }
 
 func IsPath(pathStr string) bool {
