@@ -41,6 +41,7 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 		return
 	}
 	var validContainer = func(finder core.SoftwareFinder) {
+		var err error
 		if processBoard.Get() == 0 {
 			return
 		}

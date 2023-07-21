@@ -140,7 +140,37 @@ func GetRunUser(ctx context.Context, ps process.Process) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(nsPids) > 0 {
+	if len(nsPids) == 0 {
+		nsPids = append(nsPids, strconv.FormatInt(ps.Pid(), 10))
+		var idx = 2
+		for _, uidType := range []string{"Uid", "Gid"} {
+			idx++
+			stdout, err = ps.Run(
+				ps.NewExecCommand(ctx, "nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net",
+					"cat", fmt.Sprintf("/proc/%s/status", nsPids[len(nsPids)-1])),
+			)
+			if err != nil {
+				return "", err
+			}
+			stdout = command.Grep(stdout, uidType)
+			id, _ := command.ReadField(stdout.Bytes(), 2)
+			if len(id) > 0 {
+				stdout, err = ps.Run(
+					ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"getent", "passwd"}),
+					ps.NewExecCommand(ctx, "awk", "-F:", fmt.Sprintf(`$%d==%s{print}`, idx, string(id))),
+				)
+				if err != nil {
+					ids = append(ids, string(id))
+					continue
+				}
+				if stdout.Len() > 0 {
+					id = []byte(strings.Split(stdout.String(), ":")[0])
+				}
+
+			}
+			ids = append(ids, string(id))
+		}
+	} else {
 		var idx = 2
 		for _, uidType := range []string{"Uid", "Gid"} {
 			idx++

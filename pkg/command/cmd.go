@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"github.com/Yeatesss/container-software/pkg/log"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/pkg/errors"
 )
 
-var cmdTimeout = time.Duration(10)
+var cmdTimeout = time.Duration(3)
 var DefaultCmdRunner = CmdRuner{
 	timeout: cmdTimeout * time.Second,
 	cache:   make(map[string]string),
@@ -24,9 +25,10 @@ var DefaultCmdRunner = CmdRuner{
 }
 
 type CmdRuner struct {
-	timeout time.Duration
-	cache   map[string]string
-	lock    sync.Mutex
+	timeout  time.Duration
+	cache    map[string]string
+	lock     sync.Mutex
+	singleDo *singleflight.Group
 }
 
 func (p *CmdRuner) NewExecCommand(ctx context.Context, name string, arg ...string) func() (*exec.Cmd, context.CancelFunc) {
@@ -71,9 +73,10 @@ var WithTimeout = func(timeoutSecond int64) func(runer *CmdRuner) *CmdRuner {
 
 func NewCmdRuner(options ...Option) *CmdRuner {
 	runner := &CmdRuner{
-		timeout: cmdTimeout * time.Second,
-		cache:   make(map[string]string),
-		lock:    sync.Mutex{},
+		timeout:  cmdTimeout * time.Second,
+		cache:    make(map[string]string),
+		lock:     sync.Mutex{},
+		singleDo: &singleflight.Group{},
 	}
 	for _, option := range options {
 		runner = option(runner)
@@ -117,6 +120,7 @@ func Grep(stdout *bytes.Buffer, filters ...string) *bytes.Buffer {
 func (p *CmdRuner) Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdout *bytes.Buffer, err error) {
 	var cmdStr bytes.Buffer
 	var cmdS []*exec.Cmd
+	stdout = &bytes.Buffer{}
 	for _, f := range cmdFuncs {
 		cmd, _ := f()
 		cmdS = append(cmdS, cmd)
@@ -131,16 +135,20 @@ func (p *CmdRuner) Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdo
 	if v, ok := p.fromCache(cmdStr.String()); ok {
 		return bytes.NewBuffer([]byte(v)), nil
 	}
+	tmpStdout, doerr, _ := p.singleDo.Do(cmdStr.String(), func() (r interface{}, e error) {
+		return p.cmdPipeRun(cmdS)
+	})
 
-	stdout, err = p.cmdPipeRun(cmdS)
-
-	if err != nil && stdout == nil {
-		return nil, err
+	if doerr != nil && tmpStdout == nil {
+		return nil, doerr
 	}
-	if err = parseExitError(err); err != nil {
-		return stdout, err
+	if doerr = parseExitError(doerr); doerr != nil {
+		return stdout, doerr
 	}
-
+	stdout = tmpStdout.(*bytes.Buffer)
+	if stdout == nil {
+		return bytes.NewBuffer([]byte{}), nil
+	}
 	if strings.Contains(stdout.String(), fmt.Sprintf("%s: not found", cmdS[0].Path)) {
 		return &bytes.Buffer{}, nil
 	}
@@ -201,7 +209,7 @@ func (p *CmdRuner) cmdPipeRun(cmdS []*exec.Cmd) (out *bytes.Buffer, err error) {
 			}
 			bufByte = out.Bytes()
 		case <-fuse.C:
-			log.Logger.Debug("Get Stdout Timeout")
+			log.Logger.Debug("Get Stdout Timeout:", cmdS[idx].String())
 			return
 		}
 

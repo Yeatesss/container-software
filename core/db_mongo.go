@@ -37,7 +37,7 @@ func (m MongoFindler) Verify(ctx context.Context, c *Container, thisis func(*Pro
 			return
 		}
 		stdout, err := ps.Run(
-			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-h"}))
+			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"env", "LC_ALL=C", exe, "-h"}))
 		if err != nil {
 			return err
 		}
@@ -99,7 +99,7 @@ func getMongoVersion(ctx context.Context, ps process.Process, exe string) (strin
 		err    error
 	)
 	stdout, err = ps.Run(
-		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-version"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"env", "LC_ALL=C", exe, "-version"}),
 	)
 	if err != nil {
 		return "", err
