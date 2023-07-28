@@ -65,6 +65,10 @@ func (d DarwinProcess) NsPids(ctx context.Context) ([]string, error) {
 	//TODO implement me
 	panic("implement me")
 }
+func (d DarwinProcess) PidNamespace(_ context.Context) (exe *bytes.Buffer, err error) {
+	//TODO implement me
+	panic("implement me")
+}
 
 func NewProcess(_ int64, _ []int64) *DarwinProcess {
 	return &DarwinProcess{}

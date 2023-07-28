@@ -107,6 +107,8 @@ type Process interface {
 	Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdout *bytes.Buffer, err error)
 	EnterProcessNsRun(ctx context.Context, pid int64, cmdStrs []string, envs ...string) func() (*exec.Cmd, context.CancelFunc)
 	NewExecCommand(ctx context.Context, name string, arg ...string) func() (*exec.Cmd, context.CancelFunc)
+	NsPid() int64
+	SetNsPid(nsPid int64)
 	Pid() int64
 	ChildPids() []int64
 	SetChildPids([]int64)
@@ -114,6 +116,7 @@ type Process interface {
 	Cwd(ctx context.Context) (cwd *bytes.Buffer, err error)
 	Cmdline() (cmdline *bytes.Buffer, err error)
 	Exe(ctx context.Context) (exe *bytes.Buffer, err error)
+	PidNamespace(_ context.Context) (exe *bytes.Buffer, err error)
 	NsPids(ctx context.Context) ([]string, error)
 }
 

@@ -40,6 +40,7 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 		err = jsoniter.Unmarshal(val, &softwares)
 		return
 	}
+
 	var validContainer = func(finder core.SoftwareFinder) {
 		var err error
 		if processBoard.Get() == 0 {

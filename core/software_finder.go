@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/charmbracelet/log"
+
 	"github.com/Yeatesss/container-software/pkg/command"
 
 	"github.com/Yeatesss/container-software/pkg/proc/process"
@@ -16,6 +18,26 @@ import (
 
 type SwType string
 type SwName string
+
+var HostPidNamespace string
+
+func init() {
+	hostNsBuf, err := command.NewCmdRuner().Run(
+		command.NewCmdRuner().NewExecCommand(
+			context.Background(), "ls", "-l", "/proc/1/ns",
+		),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	hostNsBuf = command.Grep(hostNsBuf, "pid")
+	if hostNsBuf.Len() > 0 {
+		pidNs, _ := command.ReadField(hostNsBuf.Bytes(), 11)
+		if len(pidNs) > 10 {
+			HostPidNamespace = string(pidNs)[5 : len(pidNs)-1]
+		}
+	}
+}
 
 const (
 	DATABASE SwType = "database"
@@ -32,6 +54,10 @@ func GetSoftware(ctx context.Context, c *Container) (softs []*Software, err erro
 			fmt.Println(e)
 		}
 	}()
+	sort.SliceStable(c.Processes, func(i, j int) bool {
+		return c.Processes[i].Pid() < c.Processes[j].Pid()
+	})
+	c.SetHypotheticalNspid()
 	err = c.Processes.Range(func(_ int, process *Process) (rangerr error) {
 		var (
 			ctr *Container
@@ -74,9 +100,7 @@ func (l Processes) Range(f func(idx int, process *Process) error) (hasErr error)
 	var (
 		skipChilds = make(map[int64]bool, l.Len())
 	)
-	sort.SliceStable(l, func(i, j int) bool {
-		return l[i].Pid() < l[j].Pid()
-	})
+
 	for idx, ps := range l {
 		if _, ok := skipChilds[ps.Pid()]; ok {
 			continue
@@ -112,6 +136,113 @@ type Container struct {
 	Id        string
 	EnvPath   string
 	Processes Processes
+}
+type HypotheticalPID struct {
+	PID     int64
+	Cmdline string
+	Hit     bool
+}
+
+func (c *Container) SetHypotheticalNspid() {
+	var (
+		hostPIDs []*HypotheticalPID
+		ctrPids  []*HypotheticalPID
+		nsPid    = make(map[int64]int64)
+	)
+	sort.SliceStable(c.Processes, func(i, j int) bool {
+		return c.Processes[i].Pid() < c.Processes[j].Pid()
+	})
+	uname, _ := command.NewCmdRuner().Run(
+		command.NewCmdRuner().NewExecCommand(context.Background(), "uname", "-r"),
+	)
+	unameStr := strings.TrimSpace(uname.String())
+	pidNamespace, err := c.Processes[0].PidNamespace(context.Background())
+	if err != nil {
+		return
+	}
+	if pidNamespace.String() == HostPidNamespace {
+		for _, ps := range c.Processes {
+			ps.SetNsPid(ps.Pid())
+		}
+		return
+	}
+	if uname.Len() > 0 && strings.Contains(unameStr, "-") {
+		exuname := strings.Split(unameStr, "-")
+		if exuname[0] >= "3.11" {
+			return
+		}
+	}
+
+	stdoutBuf, err := c.Processes[0].Run(
+		c.Processes[0].EnterProcessNsRun(context.Background(), c.Processes[0].Pid(), []string{"ls", "-l", "/proc"}, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"),
+	)
+	if err != nil {
+		return
+	}
+	stdout := stdoutBuf.Bytes()
+	if len(stdout) == 0 && len(c.Processes) == 1 {
+		c.Processes[0].SetNsPid(1)
+		return
+	}
+	for stdoutBuf.Len() > 0 {
+		var pid int64
+		line := command.ReadLine(stdout)
+		stdout = command.NextLine(stdout)
+
+		pidByte, _ := command.ReadField(line, 9)
+		pid, err = strconv.ParseInt(string(pidByte), 10, 64)
+		if err != nil {
+			break
+		}
+		if pid == 0 {
+			continue
+		}
+		//fmt.Println("/proc/" + string(pidByte) + "/cmdline")
+		cmdline, err := command.NewCmdRuner().Run(
+			command.NewCmdRuner().EnterProcessNsRun(context.Background(), c.Processes[0].Pid(), []string{"cat", "/proc/" + string(pidByte) + "/cmdline"}, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"),
+		)
+		if err != nil {
+			continue
+		}
+		ctrPids = append(ctrPids, &HypotheticalPID{
+			PID:     pid,
+			Cmdline: cmdline.String(),
+			Hit:     false,
+		})
+	}
+	sort.SliceStable(ctrPids, func(i, j int) bool {
+		return ctrPids[i].PID < ctrPids[j].PID
+	})
+	stdoutBuf = command.Grep(stdoutBuf, "pid")
+
+	for _, process := range c.Processes {
+		cl, e := process.Cmdline()
+		if e != nil {
+			continue
+		}
+		//fmt.Println(e)
+		hostPIDs = append(hostPIDs, &HypotheticalPID{
+			PID:     process.Pid(),
+			Cmdline: cl.String(),
+		})
+	}
+	for idx, hostPid := range hostPIDs {
+		if len(ctrPids)-1 >= idx {
+			inc := idx
+			for ; inc < len(ctrPids); inc++ {
+				if hostPid.Cmdline == ctrPids[inc].Cmdline && !ctrPids[inc].Hit {
+					ctrPids[inc].Hit = true
+					nsPid[hostPid.PID] = ctrPids[inc].PID
+					break
+				}
+			}
+		}
+	}
+	for _, process := range c.Processes {
+		if nspid, ok := nsPid[process.Pid()]; ok {
+			process.SetNsPid(nspid)
+		}
+	}
 }
 
 // Software Information about software in containers

@@ -17,8 +17,18 @@ type LinuxProcess struct {
 	cmd      *bytes.Buffer
 	cwd      *bytes.Buffer
 	exe      *bytes.Buffer
+	nsPid    int64
 	pid      int64
 	childPid []int64
+}
+
+func (p *LinuxProcess) NsPid() int64 {
+	return p.nsPid
+}
+
+func (p *LinuxProcess) SetNsPid(nsPid int64) {
+	p.nsPid = nsPid
+	return
 }
 
 func NewProcess(pid int64, childPid []int64) *LinuxProcess {
@@ -85,6 +95,26 @@ func (p *LinuxProcess) Exe(ctx context.Context) (exe *bytes.Buffer, err error) {
 	}
 	return bytes.NewBuffer(bytes.TrimSpace(exe.Bytes())), nil
 }
+func (p *LinuxProcess) PidNamespace(_ context.Context) (exe *bytes.Buffer, err error) {
+	var pidNamespace string
+	nsBuf, err := p.Run(
+		p.NewExecCommand(
+			context.Background(), "ls", "-l", fmt.Sprintf("/proc/%d/ns", p.pid),
+		),
+	)
+	if err != nil {
+		return
+	}
+	nsBuf = command.Grep(nsBuf, "pid")
+	if nsBuf.Len() > 0 {
+		pidNs, _ := command.ReadField(nsBuf.Bytes(), 11)
+		if len(pidNs) > 10 {
+			pidNamespace = string(pidNs)[5 : len(pidNs)-1]
+		}
+	}
+
+	return bytes.NewBuffer([]byte(pidNamespace)), nil
+}
 func (p *LinuxProcess) NsPids(ctx context.Context) ([]string, error) {
 	var nsPids []string
 	stdout, err := p.CmdRuner.Run(
@@ -104,6 +134,9 @@ func (p *LinuxProcess) NsPids(ctx context.Context) ([]string, error) {
 			nsPids = append(nsPids, string(val))
 		}
 	}
-
+	if len(nsPids) == 0 && p.nsPid > 0 {
+		nsPids = append(nsPids, fmt.Sprintf("%d", p.pid))
+		nsPids = append(nsPids, fmt.Sprintf("%d", p.nsPid))
+	}
 	return nsPids, nil
 }
