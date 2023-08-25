@@ -11,6 +11,26 @@ var _ Process = &DarwinProcess{}
 type DarwinProcess struct {
 }
 
+func (d DarwinProcess) CacheClear(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d DarwinProcess) NewExecCommandWithEnv(ctx context.Context, name string, arg []string, envs ...string) func() (*exec.Cmd, context.CancelFunc) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d DarwinProcess) NsPid() int64 {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d DarwinProcess) SetNsPid(nsPid int64) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (d DarwinProcess) Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdout *bytes.Buffer, err error) {
 	//TODO implement me
 	panic("implement me")

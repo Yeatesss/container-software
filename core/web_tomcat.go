@@ -72,7 +72,7 @@ func (m TomcatFindler) GetSoftware(ctx context.Context, c *Container) ([]*Softwa
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ctx, ps)
+		software.User, err = GetRunUser(ctx, ps, c.EnvPath)
 		if err != nil {
 			return err
 		}

@@ -80,7 +80,7 @@ func (m JbossFindler) GetSoftware(ctx context.Context, c *Container) ([]*Softwar
 			}
 			software.BindEndpoint = append(software.BindEndpoint, endpoints...)
 		}
-		software.User, err = GetRunUser(ctx, ps)
+		software.User, err = GetRunUser(ctx, ps, c.EnvPath)
 		if err != nil {
 			return err
 		}
@@ -107,6 +107,14 @@ func getJbossVersionAndConfig(ctx context.Context, envPath string, ps *Process) 
 		c := re.FindStringSubmatch(stdout.String())
 		if len(c) > 1 {
 			version = c[1]
+		}
+	}
+	regexp, _ := regexp.Compile(`JBoss\s+(\d+\.\d+\.\d+)\.GA`)
+	//regexp.find
+	if version == "" {
+		match := regexp.FindStringSubmatch(stdout.String())
+		if len(match) == 2 {
+			version = match[1]
 		}
 	}
 	stdout, err = ps.Run(

@@ -7,6 +7,7 @@ require (
 	github.com/coocood/freecache v1.2.3
 	github.com/json-iterator/go v1.1.12
 	github.com/pkg/errors v0.9.1
+	golang.org/x/sync v0.3.0
 )
 
 require (
@@ -22,6 +23,5 @@ require (
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.15.1 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
-	golang.org/x/sync v0.3.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
 )

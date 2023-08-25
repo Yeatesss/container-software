@@ -96,6 +96,9 @@ func GetProcessExe(ctx context.Context, process Process) (string, error) {
 			return "", nil
 
 		}
+		if strings.Contains(string(exe), "runsvinit") {
+			return "blackexe", nil
+		}
 		return string(exe), nil
 
 	}
@@ -105,8 +108,10 @@ func GetProcessExe(ctx context.Context, process Process) (string, error) {
 
 type Process interface {
 	Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdout *bytes.Buffer, err error)
+	CacheClear(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc))
 	EnterProcessNsRun(ctx context.Context, pid int64, cmdStrs []string, envs ...string) func() (*exec.Cmd, context.CancelFunc)
 	NewExecCommand(ctx context.Context, name string, arg ...string) func() (*exec.Cmd, context.CancelFunc)
+	NewExecCommandWithEnv(ctx context.Context, name string, arg []string, envs ...string) func() (*exec.Cmd, context.CancelFunc)
 	NsPid() int64
 	SetNsPid(nsPid int64)
 	Pid() int64

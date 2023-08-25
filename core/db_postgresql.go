@@ -75,7 +75,7 @@ func (m PostgresqlFindler) GetSoftware(ctx context.Context, c *Container) ([]*So
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ctx, ps)
+		software.User, err = GetRunUser(ctx, ps, c.EnvPath)
 		if err != nil {
 			return err
 		}

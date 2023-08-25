@@ -74,7 +74,7 @@ func (m LighttpdFindler) GetSoftware(ctx context.Context, c *Container) ([]*Soft
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ctx, ps)
+		software.User, err = GetRunUser(ctx, ps, c.EnvPath)
 		if err != nil {
 			return err
 		}

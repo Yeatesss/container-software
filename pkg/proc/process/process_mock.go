@@ -18,6 +18,16 @@ type MockProcess struct {
 	exe      string // lrwxrwxrwx 1 root root 0 Jun 19 10:52 /proc/2548908/exe -> /usr/sbin/lighttpd
 }
 
+func (p *MockProcess) CacheClear(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (p *MockProcess) NewExecCommandWithEnv(ctx context.Context, name string, arg []string, envs ...string) func() (*exec.Cmd, context.CancelFunc) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (p *MockProcess) PidNamespace(_ context.Context) (exe *bytes.Buffer, err error) {
 	//TODO implement me
 	panic("implement me")

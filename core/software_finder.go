@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/charmbracelet/log"
-
 	"github.com/Yeatesss/container-software/pkg/command"
 
 	"github.com/Yeatesss/container-software/pkg/proc/process"
@@ -21,23 +19,23 @@ type SwName string
 
 var HostPidNamespace string
 
-func init() {
-	hostNsBuf, err := command.NewCmdRuner().Run(
-		command.NewCmdRuner().NewExecCommand(
-			context.Background(), "ls", "-l", "/proc/1/ns",
-		),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	hostNsBuf = command.Grep(hostNsBuf, "pid")
-	if hostNsBuf.Len() > 0 {
-		pidNs, _ := command.ReadField(hostNsBuf.Bytes(), 11)
-		if len(pidNs) > 10 {
-			HostPidNamespace = string(pidNs)[5 : len(pidNs)-1]
-		}
-	}
-}
+//func init() {
+//	hostNsBuf, err := command.NewCmdRuner().Run(
+//		command.NewCmdRuner().NewExecCommand(
+//			context.Background(), "ls", "-l", "/proc/1/ns",
+//		),
+//	)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	hostNsBuf = command.Grep(hostNsBuf, "pid")
+//	if hostNsBuf.Len() > 0 {
+//		pidNs, _ := command.ReadField(hostNsBuf.Bytes(), 11)
+//		if len(pidNs) > 10 {
+//			HostPidNamespace = string(pidNs)[5 : len(pidNs)-1]
+//		}
+//	}
+//}
 
 const (
 	DATABASE SwType = "database"
@@ -71,6 +69,7 @@ func GetSoftware(ctx context.Context, c *Container) (softs []*Software, err erro
 		}
 		ctr.Processes = append(ctr.Processes, &Process{
 			Process: process.Process,
+			Version: process.Version,
 		})
 		finders[process._finder] = ctr
 		return nil
@@ -127,6 +126,7 @@ func (l Processes) Len() int {
 // Process Information about the processes in the container
 type Process struct {
 	process.Process
+	Version string `json:"version"`
 	_finder SoftwareFinder
 }
 
@@ -135,6 +135,7 @@ type Process struct {
 type Container struct {
 	Id        string
 	EnvPath   string
+	Labels    map[string]string
 	Processes Processes
 }
 type HypotheticalPID struct {
@@ -260,7 +261,7 @@ func (p *Process) SetFinder(s SoftwareFinder) {
 	p._finder = s
 }
 
-func GetRunUser(ctx context.Context, ps process.Process) (string, error) {
+func GetRunUser(ctx context.Context, ps process.Process, envPath string) (string, error) {
 	var (
 		stdout *bytes.Buffer
 		nsPids []string
@@ -277,11 +278,16 @@ func GetRunUser(ctx context.Context, ps process.Process) (string, error) {
 		for _, uidType := range []string{"Uid", "Gid"} {
 			idx++
 			stdout, err = ps.Run(
-				ps.NewExecCommand(ctx, "nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net",
-					"cat", fmt.Sprintf("/proc/%s/status", nsPids[len(nsPids)-1])),
+				ps.NewExecCommandWithEnv(ctx, "nsenter", append([]string{}, "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net",
+					"cat", fmt.Sprintf("/proc/%s/status", nsPids[len(nsPids)-1])), envPath),
 			)
 			if err != nil {
 				return "", err
+			}
+			if stdout.Len() == 0 {
+				stdout, err = ps.Run(
+					ps.NewExecCommand(ctx, "cat", fmt.Sprintf("/proc/%s/status", nsPids[0])),
+				)
 			}
 			stdout = command.Grep(stdout, uidType)
 			id, _ := command.ReadField(stdout.Bytes(), 2)
@@ -306,11 +312,16 @@ func GetRunUser(ctx context.Context, ps process.Process) (string, error) {
 		for _, uidType := range []string{"Uid", "Gid"} {
 			idx++
 			stdout, err = ps.Run(
-				ps.NewExecCommand(ctx, "nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net", "--mount",
-					"cat", fmt.Sprintf("/proc/%s/status", nsPids[len(nsPids)-1])),
+				ps.NewExecCommandWithEnv(ctx, "nsenter", append([]string{}, "-t", strconv.FormatInt(ps.Pid(), 10), "--pid", "--uts", "--ipc", "--net", "--mount",
+					"cat", fmt.Sprintf("/proc/%s/status", nsPids[len(nsPids)-1])), envPath),
 			)
 			if err != nil {
 				return "", err
+			}
+			if stdout.Len() == 0 {
+				stdout, err = ps.Run(
+					ps.NewExecCommand(ctx, "cat", fmt.Sprintf("/proc/%s/status", nsPids[0])),
+				)
 			}
 			stdout = command.Grep(stdout, uidType)
 			id, _ := command.ReadField(stdout.Bytes(), 2)
@@ -350,9 +361,8 @@ func GetEndpoint(ctx context.Context, ps process.Process) ([]string, error) {
 	if err != nil {
 		return []string{}, err
 	}
-	stdout = command.Grep(stdout, `tcp|udp`,
-		strconv.FormatInt(ps.Pid(), 10),
-		`LISTEN`)
+	stdout = command.Grep(stdout, `tcp>>LISTEN|udp`,
+		strconv.FormatInt(ps.Pid(), 10))
 	endpointRaw := stdout.Bytes()
 	for {
 		if len(endpointRaw) == 0 {

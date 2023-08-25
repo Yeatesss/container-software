@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -17,7 +18,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-var cmdTimeout = time.Duration(3)
+var cmdTimeout = time.Duration(4)
 var DefaultCmdRunner = CmdRuner{
 	timeout: cmdTimeout * time.Second,
 	cache:   make(map[string]string),
@@ -54,7 +55,12 @@ func (p *CmdRuner) fromCache(cmd string) (string, bool) {
 	res, ok := p.cache[cmd]
 	return res, ok
 }
-
+func (p *CmdRuner) delCache(cmd string) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	delete(p.cache, cmd)
+	return
+}
 func (p *CmdRuner) setCache(cmd string, result string) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -96,14 +102,26 @@ func Grep(stdout *bytes.Buffer, filters ...string) *bytes.Buffer {
 			line := ReadLine(cmdByte)
 			var match []byte
 			for idx, filter := range filters {
+			FILTER:
 				if idx > 0 && len(match) == 0 {
 					break
 				}
 				match = []byte{}
 				cfilters := strings.Split(filter, "|")
 				for _, cfilter := range cfilters {
+					var next string
+					if strings.Contains(cfilter, ">>") {
+						excfilter := strings.Split(cfilter, ">>")
+						cfilter = excfilter[0]
+						next = excfilter[1]
+					}
 					if bytes.Contains(line, []byte(cfilter)) {
 						match = line
+						if next != "" {
+							filter = next
+							next = ""
+							goto FILTER
+						}
 						break
 					}
 				}
@@ -117,6 +135,16 @@ func Grep(stdout *bytes.Buffer, filters ...string) *bytes.Buffer {
 	}
 	return res
 }
+func (p *CmdRuner) CacheClear(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) {
+	var cmdStr bytes.Buffer
+	var cmdS []*exec.Cmd
+	for _, f := range cmdFuncs {
+		cmd, _ := f()
+		cmdS = append(cmdS, cmd)
+		cmdStr.WriteString(cmd.String())
+	}
+	p.delCache(cmdStr.String())
+}
 func (p *CmdRuner) Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdout *bytes.Buffer, err error) {
 	var cmdStr bytes.Buffer
 	var cmdS []*exec.Cmd
@@ -126,6 +154,7 @@ func (p *CmdRuner) Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdo
 		cmdS = append(cmdS, cmd)
 		cmdStr.WriteString(cmd.String())
 	}
+	//fmt.Println(cmdStr.String())
 	defer func() {
 		if stdout != nil {
 			p.setCache(cmdStr.String(), stdout.String())
@@ -133,6 +162,7 @@ func (p *CmdRuner) Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdo
 	}()
 
 	if v, ok := p.fromCache(cmdStr.String()); ok {
+		//fmt.Println("from cache", cmdStr.String())
 		return bytes.NewBuffer([]byte(v)), nil
 	}
 	tmpStdout, doerr, _ := p.singleDo.Do(cmdStr.String(), func() (r interface{}, e error) {
@@ -195,7 +225,7 @@ func (p *CmdRuner) cmdPipeRun(cmdS []*exec.Cmd) (out *bytes.Buffer, err error) {
 		}
 		out = &bytes.Buffer{}
 		ret := make(chan error, 1)
-		go CopyStd(ret, out, stdout)
+		go CopyStd(ret, out, stdout, stderr)
 		fuse := NewTimer(p.timeout)
 		select {
 		case e := <-ret:
@@ -209,21 +239,30 @@ func (p *CmdRuner) cmdPipeRun(cmdS []*exec.Cmd) (out *bytes.Buffer, err error) {
 			}
 			bufByte = out.Bytes()
 		case <-fuse.C:
+			//fmt.Println(cmdS[idx].Process.Kill())
 			log.Logger.Debug("Get Stdout Timeout:", cmdS[idx].String())
-			return
-		}
+			cmdS[idx].Process.Signal(os.Interrupt)
 
-		if err = cmdS[idx].Wait(); err != nil {
+		}
+		if err = cmdS[idx].Wait(); err != nil && out == nil {
 			return nil, err
 		}
-
 	}
+	err = nil
 	return
 }
-func CopyStd(ret chan error, dst *bytes.Buffer, std io.ReadCloser) {
+func CopyStd(ret chan error, dst *bytes.Buffer, stds ...io.ReadCloser) {
 	defer close(ret)
-	_, err := io.Copy(dst, std)
-	ret <- err
+	for _, std := range stds {
+		_, err := io.Copy(dst, std)
+		if err != nil {
+			ret <- err
+			return
+		}
+		if dst != nil && dst.Len() > 0 {
+			break
+		}
+	}
 }
 
 func NewTimer(expire time.Duration) *time.Timer {

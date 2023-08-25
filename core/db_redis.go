@@ -74,7 +74,7 @@ func (m RedisFindler) GetSoftware(ctx context.Context, c *Container) ([]*Softwar
 		if err != nil {
 			return err
 		}
-		software.User, err = GetRunUser(ctx, ps)
+		software.User, err = GetRunUser(ctx, ps, c.EnvPath)
 		if err != nil {
 			return err
 		}
@@ -116,23 +116,24 @@ func getRedisVersion(ctx context.Context, ps process.Process, exe string) (strin
 }
 
 func getRedisConfig(ctx context.Context, ps process.Process) (string, error) {
-	var cmdlineByte []byte
-	cmdline, err := ps.Cmdline()
+	var (
+		stdout *bytes.Buffer
+		err    error
+	)
+	stdout, err = ps.Run(
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-name", "redis.conf"}),
+	)
 	if err != nil {
 		return "", err
 	}
-	comm, _ := ps.Comm(ctx)
-	commIdx := bytes.Index(cmdline.Bytes(), comm.Bytes())
-	if commIdx >= 0 {
-		cmdlineByte = bytes.ReplaceAll(cmdline.Bytes()[commIdx:], comm.Bytes(), []byte{})
-		for len(cmdlineByte) > 0 {
-			var flag []byte
-			flag, cmdlineByte = command.NextField(cmdlineByte)
-			if process.IsPath(string(flag)) {
-				return string(flag), nil
-			}
+	configRaw := stdout.Bytes()
+	for len(configRaw) > 0 {
+		var val []byte
+		val, configRaw = command.ReadField(configRaw, 1)
+		if len(val) > 0 {
+			return string(val), nil
 		}
+		configRaw = command.NextLine(configRaw)
 	}
-
 	return "", nil
 }
