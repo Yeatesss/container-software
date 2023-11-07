@@ -79,7 +79,7 @@ func GetProcessExe(ctx context.Context, process Process) (string, error) {
 			}
 			var findStdOut *bytes.Buffer
 			findStdOut, err = process.Run(
-				process.EnterProcessNsRun(ctx, process.Pid(), []string{"find", "/", "-name", commStr}),
+				process.EnterProcessNsRun(ctx, process.Pid(), []string{"find", "/", "-path", "/proc", "-prune", "-o", "-name", commStr, "-print"}),
 			)
 			if err != nil {
 				return "", err

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	jsoniter "github.com/json-iterator/go"
+
 	"github.com/Yeatesss/container-software/pkg/command"
 )
 
@@ -22,6 +24,12 @@ type LinuxProcess struct {
 	childPid []int64
 }
 
+func (p *LinuxProcess) MarshalJSON() ([]byte, error) {
+	return jsoniter.Marshal(struct {
+		Pid       int64
+		ChildPids []int64
+	}{Pid: p.pid, ChildPids: p.childPid})
+}
 func (p *LinuxProcess) NsPid() int64 {
 	return p.nsPid
 }
@@ -31,12 +39,17 @@ func (p *LinuxProcess) SetNsPid(nsPid int64) {
 	return
 }
 
-func NewProcess(pid int64, childPid []int64) *LinuxProcess {
+func NewProcess(pid int64, childPid []int64, options ...command.Option) *LinuxProcess {
+	var cmdRunner = command.NewCmdRuner()
 	if childPid == nil {
 		childPid = []int64{}
 	}
-	return &LinuxProcess{pid: pid, childPid: childPid, CmdRuner: command.NewCmdRuner()}
+	for _, option := range options {
+		cmdRunner = option(cmdRunner)
+	}
+	return &LinuxProcess{pid: pid, childPid: childPid, CmdRuner: cmdRunner}
 }
+
 func (p *LinuxProcess) Pid() int64 {
 	return p.pid
 }
@@ -90,7 +103,7 @@ func (p *LinuxProcess) Exe(ctx context.Context) (exe *bytes.Buffer, err error) {
 		p.NewExecCommand(ctx, "ls", "-l", fmt.Sprintf("/proc/%d/exe", p.pid)),
 	)
 	if err != nil {
-		fmt.Println("exe error:", fmt.Sprintf("/proc/%d/exe", p.pid))
+		fmt.Println("exe error:", fmt.Sprintf("/proc/%d/exe", p.pid), err)
 		return nil, err
 	}
 	return bytes.NewBuffer(bytes.TrimSpace(exe.Bytes())), nil

@@ -95,7 +95,7 @@ func getTomcatVersionAndConfig(ctx context.Context, envPath string, ps *Process)
 	)
 
 	findVersionStdout, err = ps.Run(
-		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-name", "version.sh"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-path", "/proc", "-prune", "-o", "-path", "/lib", "-prune", "-o", "-path", "/lib64", "-prune", "-o", "-name", "version.sh", "-print"}),
 	)
 	if err != nil {
 		return

@@ -2,7 +2,11 @@ package container_software
 
 import (
 	"context"
+	"regexp"
+	"strings"
 	"sync"
+
+	"github.com/pkg/errors"
 
 	jsoniter "github.com/json-iterator/go"
 
@@ -98,6 +102,10 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 		if err != nil {
 			return
 		}
+		err = Check(softwares)
+		if err != nil {
+			return
+		}
 		softwaresByte, err = jsoniter.Marshal(softwares)
 		if err != nil {
 			return
@@ -105,4 +113,18 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 		l.ctrCache.Set([]byte(c.Id), softwaresByte, 0)
 	}
 	return
+}
+
+func Check(sfs []*core.Software) error {
+	pattern := regexp.MustCompile(`[vV]*\d+\.\S+`)
+
+	for _, sf := range sfs {
+		if !pattern.MatchString(sf.Version) {
+			return errors.New(sf.Name + " " + sf.Version + " is not valid")
+		}
+		if strings.Contains(sf.ConfigPath, "find:") {
+			return errors.New(sf.Name + " " + sf.ConfigPath + " is not valid")
+		}
+	}
+	return nil
 }

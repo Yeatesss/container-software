@@ -133,7 +133,7 @@ func getLighttpdConfig(ctx context.Context, ps process.Process) (string, error) 
 		stdout *bytes.Buffer
 	)
 	stdout, err = ps.Run(
-		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-name", "lighttpd.conf"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-path", "/proc", "-prune", "-o", "-path", "/lib", "-prune", "-o", "-path", "/lib64", "-prune", "-o", "-name", "lighttpd.conf", "-print"}),
 	)
 	if err != nil {
 		return "", err

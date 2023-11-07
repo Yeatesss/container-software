@@ -109,16 +109,24 @@ func getJbossVersionAndConfig(ctx context.Context, envPath string, ps *Process) 
 			version = c[1]
 		}
 	}
-	regexp, _ := regexp.Compile(`JBoss\s+(\d+\.\d+\.\d+)\.GA`)
+	regexpExe, _ := regexp.Compile(`JBoss\s+(\d+\.\d+\.\d+)\.GA`)
 	//regexp.find
 	if version == "" {
-		match := regexp.FindStringSubmatch(stdout.String())
+		match := regexpExe.FindStringSubmatch(stdout.String())
+		if len(match) == 2 {
+			version = match[1]
+		}
+	}
+	regexpExe, _ = regexp.Compile(`version\s+(\d+\.\d+\.\d+)`)
+	//regexp.find
+	if version == "" {
+		match := regexpExe.FindStringSubmatch(stdout.String())
 		if len(match) == 2 {
 			version = match[1]
 		}
 	}
 	stdout, err = ps.Run(
-		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-name", "standalone.xml"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-path", "/proc", "-prune", "-o", "-path", "/lib", "-prune", "-o", "-path", "/lib64", "-prune", "-o", "-name", "standalone.xml", "-print"}),
 	)
 	if err != nil {
 		return

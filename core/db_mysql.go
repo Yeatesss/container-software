@@ -116,7 +116,7 @@ func getMysqlConfig(ctx context.Context, ps process.Process) (string, error) {
 		return "", err
 	}
 	if strings.Contains(cmdline.String(), "--defaults-file") {
-		re := regexp.MustCompile(`--defaults-file[\x20=]+(\S+)`)
+		re := regexp.MustCompile(`--defaults-file[\x20=]+([a-zA-Z0-9\_\-\/\.]+)`)
 		match := re.FindStringSubmatch(cmdline.String())
 
 		if len(match) > 1 {
@@ -128,7 +128,7 @@ func getMysqlConfig(ctx context.Context, ps process.Process) (string, error) {
 		stdout *bytes.Buffer
 	)
 	stdout, err = ps.Run(
-		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-name", "my.cnf"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-path", "/proc", "-prune", "-o", "-path", "/lib", "-prune", "-o", "-path", "/lib64", "-prune", "-o", "-name", "my.cnf", "-print"}),
 	)
 	if err != nil {
 		return "", err

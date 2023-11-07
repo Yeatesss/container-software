@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"strconv"
@@ -12,13 +13,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coocood/freecache"
+
 	"github.com/Yeatesss/container-software/pkg/log"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/pkg/errors"
 )
 
-var cmdTimeout = time.Duration(4)
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+var cmdTimeout = time.Duration(50)
 var DefaultCmdRunner = CmdRuner{
 	timeout: cmdTimeout * time.Second,
 	cache:   make(map[string]string),
@@ -26,10 +33,11 @@ var DefaultCmdRunner = CmdRuner{
 }
 
 type CmdRuner struct {
-	timeout  time.Duration
-	cache    map[string]string
-	lock     sync.Mutex
-	singleDo *singleflight.Group
+	timeout      time.Duration
+	cache        map[string]string
+	lock         sync.Mutex
+	singleDo     *singleflight.Group
+	DisableCache bool
 }
 
 func (p *CmdRuner) NewExecCommand(ctx context.Context, name string, arg ...string) func() (*exec.Cmd, context.CancelFunc) {
@@ -75,6 +83,10 @@ var WithTimeout = func(timeoutSecond int64) func(runer *CmdRuner) *CmdRuner {
 		runer.timeout = time.Duration(timeoutSecond) * time.Second
 		return runer
 	}
+}
+var DisableCache = func(cmdRunner *CmdRuner) *CmdRuner {
+	cmdRunner.DisableCache = true
+	return cmdRunner
 }
 
 func NewCmdRuner(options ...Option) *CmdRuner {
@@ -144,7 +156,29 @@ func (p *CmdRuner) CacheClear(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)
 		cmdStr.WriteString(cmd.String())
 	}
 	p.delCache(cmdStr.String())
+	globalCache.Del(cmdStr.Bytes())
+
 }
+
+var globalCache = freecache.NewCache(1024 * 1024 * 100)
+
+func init() {
+	go func() {
+		for {
+			log.Logger.Debug("globalCache info:",
+				"Evacuate:", globalCache.EvacuateCount(),
+				"histcount:", globalCache.HitCount(),
+				"misscount:", globalCache.MissCount(),
+				"hitRate:", globalCache.HitRate(),
+				"entryCount:", globalCache.EntryCount())
+			time.Sleep(5 * time.Second)
+		}
+	}()
+}
+
+// var globalCache1 = make(map[string]string)
+//var mlock = sync.RWMutex{}
+
 func (p *CmdRuner) Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdout *bytes.Buffer, err error) {
 	var cmdStr bytes.Buffer
 	var cmdS []*exec.Cmd
@@ -154,38 +188,71 @@ func (p *CmdRuner) Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdo
 		cmdS = append(cmdS, cmd)
 		cmdStr.WriteString(cmd.String())
 	}
-	//fmt.Println(cmdStr.String())
-	defer func() {
-		if stdout != nil {
-			p.setCache(cmdStr.String(), stdout.String())
-		}
-	}()
 
-	if v, ok := p.fromCache(cmdStr.String()); ok {
-		//fmt.Println("from cache", cmdStr.String())
-		return bytes.NewBuffer([]byte(v)), nil
-	}
 	tmpStdout, doerr, _ := p.singleDo.Do(cmdStr.String(), func() (r interface{}, e error) {
+		cmdline := strings.TrimSpace(cmdStr.String())
+		if !p.DisableCache {
+			if v, ok := p.fromCache(cmdline); ok {
+				return bytes.NewBuffer([]byte(v)), nil
+			}
+			v, cacheErr := globalCache.Get([]byte(cmdline))
+			if !errors.Is(freecache.ErrNotFound, cacheErr) {
+				return bytes.NewBuffer(v), nil
+			}
+		}
+
+		log.Logger.Debug("Process Not hit cache:", "cmd", cmdStr.String())
 		return p.cmdPipeRun(cmdS)
 	})
+	defer func() {
+		if doerr == nil {
+			cmdline := strings.TrimSpace(cmdStr.String())
+			if !p.DisableCache {
+				p.setCache(cmdline, stdout.String())
+				globalCache.Set([]byte(cmdline), stdout.Bytes(), rand.Intn(30)+600)
+			}
+		} else {
+			log.Logger.Debug("Cant cache:", "cmd", cmdStr.String(), "err:", doerr)
 
+		}
+	}()
 	if doerr != nil && tmpStdout == nil {
+		//DebugPrint(cmdStr, func() {
+		//	log.Logger.Debug("runcmdstr999999:", "cmd79999999", cmdStr.String(), "err:", doerr)
+		//})
+
 		return nil, doerr
 	}
 	if doerr = parseExitError(doerr); doerr != nil {
+		//DebugPrint(cmdStr, func() {
+		//	log.Logger.Debug("runcmdstr7777777:", "cmd7777777777", cmdStr.String(), "err:", doerr)
+		//})
+
 		return stdout, doerr
 	}
 	stdout = tmpStdout.(*bytes.Buffer)
 	if stdout == nil {
+		//DebugPrint(cmdStr, func() {
+		//	log.Logger.Debug("runcmdstr9999999:", "cmd999999", cmdStr.String(), "stdout", stdout.Len(), "err:", doerr)
+		//})
+
 		return bytes.NewBuffer([]byte{}), nil
 	}
 	if strings.Contains(stdout.String(), fmt.Sprintf("%s: not found", cmdS[0].Path)) {
+		//DebugPrint(cmdStr, func() {
+		//	log.Logger.Debug("runcmdstr10000000000:", "cmd10000000000", cmdStr.String(), "stdout", stdout.Len(), "err:", doerr)
+		//})
+
 		return &bytes.Buffer{}, nil
 	}
 	stdout = bytes.NewBuffer(bytes.TrimSpace(stdout.Bytes()))
 	return
 }
-
+func DebugPrint(cmdStr bytes.Buffer, f func()) {
+	if (strings.Contains(cmdStr.String(), "14238") || strings.Contains(cmdStr.String(), "11879")) && strings.Contains(cmdStr.String(), "netstat") {
+		f()
+	}
+}
 func parseExitError(err error) error {
 	e, ok := err.(*exec.ExitError)
 	if ok && len(e.Stderr) == 0 {
@@ -202,8 +269,12 @@ func (p *CmdRuner) cmdPipeRun(cmdS []*exec.Cmd) (out *bytes.Buffer, err error) {
 	var stdout io.ReadCloser
 	var stderr io.ReadCloser
 	defer func() {
-		stdout.Close()
-		stderr.Close()
+		if stdout != nil {
+			stdout.Close()
+		}
+		if stderr != nil {
+			stderr.Close()
+		}
 	}()
 	var bufByte []byte
 	for idx := 0; idx < len(cmdS); idx++ {
@@ -229,7 +300,7 @@ func (p *CmdRuner) cmdPipeRun(cmdS []*exec.Cmd) (out *bytes.Buffer, err error) {
 		fuse := NewTimer(p.timeout)
 		select {
 		case e := <-ret:
-			log.Logger.Debug("copy stdout success")
+			//log.Logger.Debug("copy stdout success")
 			if e != nil {
 				log.Logger.Error("copy stdout fail:", e)
 				return

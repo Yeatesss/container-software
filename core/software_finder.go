@@ -357,6 +357,7 @@ func GetEndpoint(ctx context.Context, ps process.Process) ([]string, error) {
 
 	stdout, err = ps.Run(
 		ps.NewExecCommand(ctx, "nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "-n", "netstat", "-anp"),
+		ps.NewExecCommand(ctx, "grep", strconv.FormatInt(ps.Pid(), 10)),
 	)
 	if err != nil {
 		return []string{}, err

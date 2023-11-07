@@ -163,7 +163,7 @@ func getApacheConfig(ctx context.Context, ps process.Process, exe string) (strin
 		return cfg, nil
 	}
 	stdout, err = ps.Run(
-		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-name", "httpd.conf"}),
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"find", "/", "-path", "/proc", "-prune", "-o", "-path", "/lib", "-prune", "-o", "-path", "/lib64", "-prune", "-o", "-name", "httpd.conf", "-print"}),
 	)
 	if err != nil {
 		return "", err

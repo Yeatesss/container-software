@@ -1,27 +1,43 @@
 package core
 
-//func TestFinders(t *testing.T) {
-//	mockMysqlCtr := &Container{
-//		Id:      "f48d3f77afc75c526fddee8de075e5cf7c25a6cf038febbba6a09b6d4da6b421",
-//		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-//		Processes: Processes{
-//			&Process{
-//				Process: process.NewProcess(313838, nil),
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/Yeatesss/container-software/pkg/proc/process"
+)
+
+//	func TestFinders(t *testing.T) {
+//		mockMysqlCtr := &Container{
+//			Id:      "f48d3f77afc75c526fddee8de075e5cf7c25a6cf038febbba6a09b6d4da6b421",
+//			EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+//			Processes: Processes{
+//				&Process{
+//					Process: process.NewProcess(313838, nil),
+//				},
+//				//&Process{
+//				//	Pid: 1572497,
+//				//	Exe: "lrwxrwxrwx 1 lxd docker 0 Jun 15 15:00 /proc/1572497/exe -> /usr/sbin/mysqld",
+//				//	Cmd: "mysqld --daemonize --skip-networking --default-time-zone=SYSTEM --socket=/var/run/mysqld/mysqld.sock ",
+//				//},
 //			},
-//			//&Process{
-//			//	Pid: 1572497,
-//			//	Exe: "lrwxrwxrwx 1 lxd docker 0 Jun 15 15:00 /proc/1572497/exe -> /usr/sbin/mysqld",
-//			//	Cmd: "mysqld --daemonize --skip-networking --default-time-zone=SYSTEM --socket=/var/run/mysqld/mysqld.sock ",
-//			//},
-//		},
+//		}
+//		fmt.Printf("%p\n", Finders[DATABASE]["mysql"])
+//		software, err := Finders[DATABASE]["mysql"].GetSoftware(mockMysqlCtr)
+//		if err != nil {
+//			return
+//		}
+//		fmt.Println(software)
 //	}
-//	fmt.Printf("%p\n", Finders[DATABASE]["mysql"])
-//	software, err := Finders[DATABASE]["mysql"].GetSoftware(mockMysqlCtr)
-//	if err != nil {
-//		return
-//	}
-//	fmt.Println(software)
-//}
+func TestEndpoint(t *testing.T) {
+	ps := process.NewProcess(int64(101409), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	eps, err := GetEndpoint(ctx, ps)
+	fmt.Println(eps, err)
+}
 
 //func TestRegexp(t *testing.T) {
 //	str := "--defaults-file = /path/to/file"
