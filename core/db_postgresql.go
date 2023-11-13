@@ -33,6 +33,9 @@ func (m PostgresqlFindler) Verify(ctx context.Context, c *Container, thisis func
 	log.Logger.Debugf("Start verify postgresql:%s", c.Id)
 	defer log.Logger.Debugf("Finish verify postgresql:%s", c.Id)
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
+		if ps._finder != nil {
+			return nil
+		}
 		var exe string
 		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {

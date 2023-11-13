@@ -33,6 +33,9 @@ func (m TomcatFindler) Verify(ctx context.Context, c *Container, thisis func(*Pr
 	log.Logger.Debugf("Start verify tomcat:%s", c.Id)
 	defer log.Logger.Debugf("Finish verify tomcat:%s", c.Id)
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
+		if ps._finder != nil {
+			return nil
+		}
 		var cmdline *bytes.Buffer
 		cmdline, err = ps.Cmdline()
 		if err != nil {

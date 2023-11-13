@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/shirou/gopsutil/v3/process"
+
 	"github.com/pkg/errors"
 
 	jsoniter "github.com/json-iterator/go"
@@ -40,6 +42,17 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 		processBoard = core.NewProcessBoard(c.Processes.Len())
 		wg           sync.WaitGroup
 	)
+	//set environment variable
+	if c.EnvPath == "" {
+		ps, _ := process.NewProcess(int32(c.Processes[0].Process.Pid()))
+		psenv, _ := ps.Environ()
+		for _, env := range psenv {
+			if strings.HasPrefix(env, "PATH") {
+				c.EnvPath = env
+				break
+			}
+		}
+	}
 	if val, _ := l.ctrCache.Get([]byte(c.Id)); len(val) > 0 {
 		err = jsoniter.Unmarshal(val, &softwares)
 		return
@@ -77,6 +90,21 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 		wg.Wait()
 		return
 	}
+	var priorityMarking = func(ps *core.Process) error {
+		var is bool
+		cmdline, err := ps.Cmdline()
+		if err != nil {
+			return err
+		}
+		if strings.Contains(strings.ToLower(cmdline.String()), "mysql") {
+			if is, err = core.NewMysqlFindler().SingleVerify(ctx, ps, func(p *core.Process, finder core.SoftwareFinder) {
+				p.SetFinder(finder)
+			}); err == nil && is {
+				hit = true
+			}
+		}
+		return nil
+	}
 
 	if len(onlys) > 0 {
 		for _, only := range onlys {
@@ -92,6 +120,10 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 			}
 		}
 	} else {
+		for _, process := range c.Processes {
+			_ = priorityMarking(process)
+		}
+
 		for _, finders := range core.Finders {
 			validContainers(finders)
 		}
@@ -120,10 +152,10 @@ func Check(sfs []*core.Software) error {
 
 	for _, sf := range sfs {
 		if !pattern.MatchString(sf.Version) {
-			return errors.New(sf.Name + " " + sf.Version + " is not valid")
+			return errors.New(sf.Name + "-version " + sf.Version + " is not valid")
 		}
 		if strings.Contains(sf.ConfigPath, "find:") {
-			return errors.New(sf.Name + " " + sf.ConfigPath + " is not valid")
+			return errors.New(sf.Name + "-config " + sf.ConfigPath + " is not valid")
 		}
 	}
 	return nil

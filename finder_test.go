@@ -165,42 +165,74 @@ func TestLighttpdFind(t *testing.T) {
 	fmt.Println(f, e, ff, ee)
 }
 func TestNginxFind(t *testing.T) {
+	//{"Process":{"Pid":28157,"ChildPids":[]},"version":""},{"Process":{"Pid":28158,"ChildPids":[]},"version":""},{"Process":{"Pid":28159,"ChildPids":[]},"version":""},{"Process":{"Pid":28160,"ChildPids":[]},"version":""}]}`
 	mockNginxCtr := &core.Container{
-		Id:      "d58f8a7897d5aac5c6c0817204e765f9698e4b4266b1ac536b507e021a4da54d",
-		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-		Processes: core.Processes{
-			//&core.Process{
-			//	Process: process.NewProcess(1929787,nil),,
-			//},
-			&core.Process{
-				Process: process.NewProcess(1929934, nil),
+		Id:      "509d203eca13972c071c2530b9b6162956186faa3a05656dd6dbc202352aab6a",
+		EnvPath: "",
+		Labels:  map[string]string{},
+		Processes: []*core.Process{
+			{
+				Process: process.NewProcess(28112, []int64{28158, 28159, 28157, 28160}),
+				Version: "",
+			},
+			{
+				Process: process.NewProcess(28157, []int64{}),
+				Version: "",
+			},
+			{
+				Process: process.NewProcess(28158, []int64{}),
+				Version: "",
+			},
+			{
+				Process: process.NewProcess(28159, []int64{}),
+				Version: "",
+			},
+			{
+				Process: process.NewProcess(28160, []int64{}),
+				Version: "",
 			},
 		},
 	}
+	//fmt.Println(jsoniter.UnmarshalFromString(a, mockNginxCtr))
 	ctx := context.Background()
 	find := NewFinder()
 	f, e := find.Find(ctx, mockNginxCtr)
-	ff, ee := find.Find(ctx, mockNginxCtr)
-	fmt.Println(f, e, ff, ee)
+	//ff, ee := find.Find(ctx, mockNginxCtr)
+	fmt.Println(f, e)
 }
+
 func TestTomcatFind(t *testing.T) {
+
 	mockLighttpdCtr := &core.Container{
-		Id:      "ab7920723bbfe58198076216a43fffe0e5a2e88c04c46f7bc6611bb0c8a25a04",
-		EnvPath: "PATH=/usr/local/tomcat/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Id:      "a5ca5fd4cfd3e74b2eb6dc85325a8192d2955ccb2890bdbe14ef5021e905cbf5",
+		EnvPath: "",
+		Labels: map[string]string{
+			"nerdctl/namespace":                      "default",
+			"nerdctl/hostname":                       "a5ca5fd4cfd3",
+			"nerdctl/platform":                       "linux/amd64",
+			"nerdctl/log-uri":                        "binary",
+			"nerdctl/anonymous-volumes":              "[\"959b7a8704a088a318d00877adbf7232de7cb7775c6cf791e976005c6f17f344\"]",
+			"nerdctl/extraHosts":                     "null",
+			"nerdctl/state-dir":                      "/var/lib/nerdctl/1935db59/containers/default/a5ca5fd4cfd3e74b2eb6dc85325a8192d2955ccb2890bdbe14ef5021e905cbf5",
+			"containerd/namespaces":                  "default",
+			"nerdctl/networks":                       "[\"bridge\"]",
+			"master_pid":                             "92521",
+			"io.containerd.image.config.stop-signal": "SIGTERM",
+			"nerdctl/mounts":                         "[{\"Type\"",
+			"nerdctl/name":                           "mysql-container",
+		},
 		Processes: core.Processes{
 			&core.Process{
-				Process: process.NewProcess(3479290, []int64{3479348}),
-			},
-			&core.Process{
-				Process: process.NewProcess(3479348, nil),
+				Process: process.NewProcess(92521, []int64{}),
 			},
 		},
 	}
 	ctx := context.Background()
 	find := NewFinder()
 	f, e := find.Find(ctx, mockLighttpdCtr)
-	ff, ee := find.Find(ctx, mockLighttpdCtr)
-	fmt.Println(f, e, ff, ee)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(f, e)
+
 }
 
 func TestJbossFind(t *testing.T) {

@@ -33,26 +33,35 @@ func (m MysqlFindler) Verify(ctx context.Context, c *Container, thisis func(*Pro
 	log.Logger.Debugf("Start verify mysql:%s", c.Id)
 	defer log.Logger.Debugf("Finish verify mysql:%s", c.Id)
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
-		var exe string
-		exe, err = process.GetProcessExe(ctx, ps.Process)
-		if err != nil {
-			return
-		}
-		stdout, err := ps.Run(
-			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-V"}))
-		if err != nil {
-			return err
-		}
-		if len(exe) > 0 && strings.Contains(stdout.String(), "mysqld") {
-			hit = true
-			thisis(ps, &m)
+		if ps._finder != nil {
 			return nil
 		}
+		hit, err = m.SingleVerify(ctx, ps, thisis)
 		return
 	})
 	return hit, err
 }
-
+func (m MysqlFindler) SingleVerify(ctx context.Context, ps *Process, thisis func(*Process, SoftwareFinder)) (hit bool, err error) {
+	var (
+		exe    string
+		stdout *bytes.Buffer
+	)
+	exe, err = process.GetProcessExe(ctx, ps.Process)
+	if err != nil {
+		return
+	}
+	stdout, err = ps.Run(
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-V"}))
+	if err != nil {
+		return
+	}
+	if len(exe) > 0 && strings.Contains(stdout.String(), "mysqld") {
+		hit = true
+		thisis(ps, &m)
+		return
+	}
+	return
+}
 func (m MysqlFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {
 	var softwares []*Software
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {

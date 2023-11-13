@@ -33,6 +33,9 @@ func (m NginxFindler) Verify(ctx context.Context, c *Container, thisis func(*Pro
 	log.Logger.Debugf("Start verify nginx:%s", c.Id)
 	defer log.Logger.Debugf("Finish verify nginx:%s", c.Id)
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
+		if ps._finder != nil {
+			return nil
+		}
 		var exe string
 		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
@@ -40,10 +43,12 @@ func (m NginxFindler) Verify(ctx context.Context, c *Container, thisis func(*Pro
 		}
 		stdout, err := ps.Run(
 			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-V"}))
+
 		if err != nil {
 			return err
 		}
 		if len(exe) > 0 && strings.Contains(stdout.String(), "nginx") {
+
 			hit = true
 			thisis(ps, &m)
 			return nil
@@ -56,6 +61,7 @@ func (m NginxFindler) Verify(ctx context.Context, c *Container, thisis func(*Pro
 func (m NginxFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {
 	var softwares []*Software
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
+
 		var software = &Software{
 			Name:         "nginx",
 			Type:         WEB,

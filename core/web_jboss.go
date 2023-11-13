@@ -33,6 +33,9 @@ func (m JbossFindler) Verify(ctx context.Context, c *Container, thisis func(*Pro
 	log.Logger.Debugf("Start verify jboss:%s", c.Id)
 	defer log.Logger.Debugf("Finish verify jboss:%s", c.Id)
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
+		if ps._finder != nil {
+			return nil
+		}
 		var exe string
 		exe, err = process.GetProcessExe(ctx, ps)
 		if err != nil {

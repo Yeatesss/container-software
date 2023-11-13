@@ -43,6 +43,9 @@ func (m SqlServerFindler) Verify(ctx context.Context, c *Container, thisis func(
 		}
 	}
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
+		if ps._finder != nil {
+			return nil
+		}
 		//fmt.Println(c.Id, ps.Pid(), ps.ChildPids())
 		var exe string
 		exe, err = process.GetProcessExe(ctx, ps.Process)

@@ -32,7 +32,7 @@ import (
 //		fmt.Println(software)
 //	}
 func TestEndpoint(t *testing.T) {
-	ps := process.NewProcess(int64(101409), nil)
+	ps := process.NewProcess(int64(104365), nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	eps, err := GetEndpoint(ctx, ps)

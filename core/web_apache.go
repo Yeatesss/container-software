@@ -34,6 +34,9 @@ func (m ApacheFindler) Verify(ctx context.Context, c *Container, thisis func(*Pr
 	log.Logger.Debugf("Start verify apache:%s", c.Id)
 	defer log.Logger.Debugf("Finish verify apache:%s", c.Id)
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
+		if ps._finder != nil {
+			return nil
+		}
 		var exe string
 		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {

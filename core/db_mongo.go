@@ -31,6 +31,9 @@ func (m MongoFindler) Verify(ctx context.Context, c *Container, thisis func(*Pro
 	var hit bool
 
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
+		if ps._finder != nil {
+			return nil
+		}
 		var exe string
 		exe, err = process.GetProcessExe(ctx, ps.Process)
 		if err != nil {
