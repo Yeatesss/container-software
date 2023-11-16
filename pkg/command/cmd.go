@@ -25,7 +25,7 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-var cmdTimeout = time.Duration(20)
+var cmdTimeout = time.Duration(40)
 var DefaultCmdRunner = CmdRuner{
 	timeout: cmdTimeout * time.Second,
 	cache:   make(map[string]string),
@@ -160,7 +160,7 @@ func (p *CmdRuner) CacheClear(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)
 
 }
 
-var globalCache = freecache.NewCache(1024 * 1024 * 100)
+var globalCache = freecache.NewCache(1024 * 1024 * 50)
 
 func init() {
 	go func() {

@@ -34,7 +34,6 @@ func (m SqlServerFindler) Verify(ctx context.Context, c *Container, thisis func(
 	var hit bool
 	log.Logger.Debugf("Start verify sqlserver:%s", c.Id)
 	defer log.Logger.Debugf("Finish verify sqlserver:%s", c.Id)
-	var retry int
 	var version string
 	pattern := regexp.MustCompile(`([^a-z]sql.*version)|(version.*sql)|(com\.microsoft\.version)`)
 	for labelKey, labelVal := range c.Labels {
@@ -58,31 +57,42 @@ func (m SqlServerFindler) Verify(ctx context.Context, c *Container, thisis func(
 			thisis(ps, &m)
 			return nil
 		}
-		cmd := ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-v"}, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
-		stdout, err := ps.Run(cmd)
-		if err != nil {
-			//TODO:Don't know why it returns a correct result and also returns an err
-			if _, ok := err.(*exec.ExitError); ok {
-				err = nil
-			} else {
-				return err
-			}
-		}
-		if strings.Contains(stdout.String(), "already running") && retry <= 2 {
-			hit = true
-			thisis(ps, &m)
-			return nil
-		}
-		if len(exe) > 0 && strings.Contains(stdout.String(), "SQL Server") {
-			hit = true
-			thisis(ps, &m)
-			return nil
-		}
+		hit, err = m.SingleVerify(ctx, ps, thisis)
 		return
 	})
 	return hit, err
 }
-
+func (m SqlServerFindler) SingleVerify(ctx context.Context, ps *Process, thisis func(*Process, SoftwareFinder)) (hit bool, err error) {
+	var (
+		exe    string
+		stdout *bytes.Buffer
+	)
+	exe, err = process.GetProcessExe(ctx, ps.Process)
+	if err != nil {
+		return
+	}
+	cmd := ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-v"}, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+	stdout, err = ps.Run(cmd)
+	if err != nil {
+		//TODO:Don't know why it returns a correct result and also returns an err
+		if _, ok := err.(*exec.ExitError); ok {
+			err = nil
+		} else {
+			return
+		}
+	}
+	if strings.Contains(stdout.String(), "already running") {
+		hit = true
+		thisis(ps, &m)
+		return
+	}
+	if len(exe) > 0 && strings.Contains(stdout.String(), "SQL Server") {
+		hit = true
+		thisis(ps, &m)
+		return
+	}
+	return
+}
 func (m SqlServerFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {
 	var softwares []*Software
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {

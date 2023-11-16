@@ -36,24 +36,31 @@ func (m JbossFindler) Verify(ctx context.Context, c *Container, thisis func(*Pro
 		if ps._finder != nil {
 			return nil
 		}
-		var exe string
-		exe, err = process.GetProcessExe(ctx, ps)
-		if err != nil {
-			return
-		}
-		stdout, err := ps.Run(
-			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"env", c.EnvPath, "." + exe, "--version", "2>&1"}))
-		if err != nil {
-			return err
-		}
-		if stdout.Len() > 0 && bytes.Contains(stdout.Bytes(), []byte("JBoss")) {
-			hit = true
-			thisis(ps, &m)
-			return nil
-		}
+		hit, err = m.SingleVerify(ctx, c.EnvPath, ps, thisis)
 		return
 	})
 	return hit, err
+}
+func (m JbossFindler) SingleVerify(ctx context.Context, envPath string, ps *Process, thisis func(*Process, SoftwareFinder)) (hit bool, err error) {
+	var (
+		exe    string
+		stdout *bytes.Buffer
+	)
+	exe, err = process.GetProcessExe(ctx, ps)
+	if err != nil {
+		return
+	}
+	stdout, err = ps.Run(
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{"env", envPath, "." + exe, "--version", "2>&1"}))
+	if err != nil {
+		return
+	}
+	if stdout.Len() > 0 && bytes.Contains(stdout.Bytes(), []byte("JBoss")) {
+		hit = true
+		thisis(ps, &m)
+		return
+	}
+	return
 }
 
 func (m JbossFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {

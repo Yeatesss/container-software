@@ -35,24 +35,31 @@ func (m LighttpdFindler) Verify(ctx context.Context, c *Container, thisis func(*
 		if ps._finder != nil {
 			return nil
 		}
-		var exe string
-		exe, err = process.GetProcessExe(ctx, ps.Process)
-		if err != nil {
-			return
-		}
-		stdout, err := ps.Run(
-			ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-V"}))
-		if err != nil {
-			return err
-		}
-		if len(exe) > 0 && strings.Contains(stdout.String(), "lighttpd") {
-			hit = true
-			thisis(ps, &m)
-			return nil
-		}
+		hit, err = m.SingleVerify(ctx, c.EnvPath, ps, thisis)
 		return
 	})
 	return hit, err
+}
+func (m LighttpdFindler) SingleVerify(ctx context.Context, envPath string, ps *Process, thisis func(*Process, SoftwareFinder)) (hit bool, err error) {
+	var (
+		exe    string
+		stdout *bytes.Buffer
+	)
+	exe, err = process.GetProcessExe(ctx, ps.Process)
+	if err != nil {
+		return
+	}
+	stdout, err = ps.Run(
+		ps.EnterProcessNsRun(ctx, ps.Pid(), []string{exe, "-V"}))
+	if err != nil {
+		return
+	}
+	if len(exe) > 0 && strings.Contains(stdout.String(), "lighttpd") {
+		hit = true
+		thisis(ps, &m)
+		return
+	}
+	return
 }
 
 func (m LighttpdFindler) GetSoftware(ctx context.Context, c *Container) ([]*Software, error) {

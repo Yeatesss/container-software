@@ -18,8 +18,7 @@ import (
 )
 
 var (
-	ctrCache     *freecache.Cache
-	ctrCacheOnce sync.Once
+	ctrCache = freecache.NewCache(1024 * 1024 * 10)
 )
 
 type Finder struct {
@@ -30,9 +29,6 @@ type Cache struct {
 }
 
 func NewFinder() *Finder {
-	ctrCacheOnce.Do(func() {
-		ctrCache = freecache.NewCache(1024 * 1024 * 10)
-	})
 	return &Finder{Cache{ctrCache: ctrCache}}
 }
 
@@ -90,7 +86,7 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 		wg.Wait()
 		return
 	}
-	var priorityMarking = func(ps *core.Process) error {
+	var priorityMarking = func(envPath string, ps *core.Process) error {
 		var is bool
 		cmdline, err := ps.Cmdline()
 		if err != nil {
@@ -98,6 +94,20 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 		}
 		if strings.Contains(strings.ToLower(cmdline.String()), "mysql") {
 			if is, err = core.NewMysqlFindler().SingleVerify(ctx, ps, func(p *core.Process, finder core.SoftwareFinder) {
+				p.SetFinder(finder)
+			}); err == nil && is {
+				hit = true
+			}
+		}
+		if strings.Contains(strings.ToLower(cmdline.String()), "sqlservr") {
+			if is, err = core.NewSqlServerFindler().SingleVerify(ctx, ps, func(p *core.Process, finder core.SoftwareFinder) {
+				p.SetFinder(finder)
+			}); err == nil && is {
+				hit = true
+			}
+		}
+		if strings.Contains(strings.ToLower(cmdline.String()), "jboss") || strings.Contains(strings.ToLower(cmdline.String()), "wildfly") {
+			if is, err = core.NewJbossFindler().SingleVerify(ctx, envPath, ps, func(p *core.Process, finder core.SoftwareFinder) {
 				p.SetFinder(finder)
 			}); err == nil && is {
 				hit = true
@@ -121,7 +131,7 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 		}
 	} else {
 		for _, process := range c.Processes {
-			_ = priorityMarking(process)
+			_ = priorityMarking(c.EnvPath, process)
 		}
 
 		for _, finders := range core.Finders {
