@@ -27,16 +27,18 @@ func GetProcessExe(ctx context.Context, process Process) (string, error) {
 	}
 	commStr = strings.TrimSpace(comm.String())
 	switch commStr {
-	case "bash", "sh":
+	case "bash", "sh", "tini":
+		var exePath []byte
 		cmdline, err = process.Cmdline()
 		if err != nil {
 			return "", err
 		}
 		cmdlineByte = cmdline.Bytes()
 		for len(cmdlineByte) > 0 {
-			exePath, cmdlineByte = command.ReadField(cmdlineByte, 1)
-			if string(exePath) != commStr && IsPath(string(exePath)) {
-				break
+			var tmpExePath []byte
+			tmpExePath, cmdlineByte = command.ReadField(cmdlineByte, 1)
+			if string(tmpExePath) != commStr && IsPath(string(tmpExePath)) {
+				exePath = tmpExePath
 			}
 		}
 		if len(exePath) > 0 {

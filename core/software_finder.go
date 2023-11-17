@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,23 +20,23 @@ type SwName string
 
 var HostPidNamespace string
 
-//func init() {
-//	hostNsBuf, err := command.NewCmdRuner().Run(
-//		command.NewCmdRuner().NewExecCommand(
-//			context.Background(), "ls", "-l", "/proc/1/ns",
-//		),
-//	)
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//	hostNsBuf = command.Grep(hostNsBuf, "pid")
-//	if hostNsBuf.Len() > 0 {
-//		pidNs, _ := command.ReadField(hostNsBuf.Bytes(), 11)
-//		if len(pidNs) > 10 {
-//			HostPidNamespace = string(pidNs)[5 : len(pidNs)-1]
-//		}
-//	}
-//}
+func init() {
+	hostNsBuf, err := command.NewCmdRuner().Run(
+		command.NewCmdRuner().NewExecCommand(
+			context.Background(), "ls", "-l", "/proc/1/ns",
+		),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	hostNsBuf = command.Grep(hostNsBuf, "pid")
+	if hostNsBuf.Len() > 0 {
+		pidNs, _ := command.ReadField(hostNsBuf.Bytes(), 11)
+		if len(pidNs) > 10 {
+			HostPidNamespace = string(pidNs)[5 : len(pidNs)-1]
+		}
+	}
+}
 
 const (
 	DATABASE SwType = "database"
@@ -109,7 +110,6 @@ func (l Processes) Range(f func(idx int, process *Process) error) (hasErr error)
 			hasErr = err
 			continue
 		}
-
 		//Ignore child process fetching if complete data can be fetched from parent process
 		if len(ps.ChildPids()) > 0 {
 			for _, childPid := range ps.ChildPids() {
@@ -380,7 +380,42 @@ func GetEndpoint(ctx context.Context, ps process.Process) ([]string, error) {
 	}
 
 	return endpoints, nil
+}
+func GetEndpointWithChild(ctx context.Context, ps process.Process) ([]string, error) {
+	var (
+		stdout    *bytes.Buffer
+		err       error
+		endpoints []string
+		pids      []string
+	)
+	pids = append(pids, strconv.FormatInt(ps.Pid(), 10))
+	for _, cp := range ps.ChildPids() {
+		pids = append(pids, strconv.FormatInt(cp, 10))
+	}
+	stdout, err = ps.Run(
+		ps.NewExecCommand(ctx, "nsenter", "-t", strconv.FormatInt(ps.Pid(), 10), "-n", "netstat", "-anp"),
+		ps.NewExecCommand(ctx, "grep", "-E", strings.Join(pids, "|")),
+		ps.NewExecCommand(ctx, "grep", "-E", "LISTEN|udp"),
+	)
+	if err != nil {
+		return []string{}, err
+	}
+	endpointRaw := stdout.Bytes()
+	for {
+		if len(endpointRaw) == 0 {
+			break
+		}
+		var val []byte
+		protocols, _ := command.ReadField(endpointRaw, 1)
 
+		val, endpointRaw = command.ReadField(endpointRaw, 4)
+		if len(val) > 0 {
+			endpoints = append(endpoints, string(protocols)+"/"+string(val))
+		}
+		endpointRaw = command.NextLine(endpointRaw)
+	}
+
+	return endpoints, nil
 }
 
 type ProcessBoard struct {
@@ -404,4 +439,7 @@ func (p *ProcessBoard) Sub() {
 	defer p.rwlock.Unlock()
 	p.total--
 	return
+}
+func (p *ProcessBoard) Add() {
+
 }

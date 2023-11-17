@@ -113,6 +113,13 @@ func (l *Finder) Find(ctx context.Context, c *core.Container, onlys ...interface
 				hit = true
 			}
 		}
+		if strings.Contains(strings.ToLower(cmdline.String()), "couchdb") {
+			if is, err = core.NewCouchdbFindler().SingleVerify(ctx, envPath, ps, func(p *core.Process, finder core.SoftwareFinder) {
+				p.SetFinder(finder)
+			}); err == nil && is {
+				hit = true
+			}
+		}
 		return nil
 	}
 

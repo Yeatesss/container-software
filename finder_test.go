@@ -594,3 +594,59 @@ func TestNgepFind(t *testing.T) {
 	//wg.Wait()
 
 }
+
+func TestInfluxDB(t *testing.T) {
+	mockSqliteCtr := &core.Container{
+		Id:      "5201ff905b57",
+		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Processes: core.Processes{
+			&core.Process{
+				Process: process.NewProcess(387088, nil),
+			},
+		},
+	}
+	ctx := context.Background()
+	find := NewFinder()
+	f, e := find.Find(ctx, mockSqliteCtr, core.InfluxDB)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(e)
+}
+func BenchmarkCouchdb(b *testing.B) {
+	mockSqliteCtr := &core.Container{
+		Id:      "5201ff905b57",
+		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Processes: core.Processes{
+			&core.Process{
+				Process: process.NewProcess(388032, []int64{388061}),
+			},
+			&core.Process{
+				Process: process.NewProcess(388061, nil),
+			},
+		},
+	}
+	ctx := context.Background()
+	find := NewFinder()
+	f, e := find.Find(ctx, mockSqliteCtr, core.Couchdb)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(e)
+}
+
+func TestCouchdb(t *testing.T) {
+	mockSqliteCtr := &core.Container{
+		Id:      "5201ff905b57",
+		EnvPath: "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		Processes: core.Processes{
+			&core.Process{
+				Process: process.NewProcess(388032, []int64{388061}),
+			},
+			&core.Process{
+				Process: process.NewProcess(388061, nil),
+			},
+		},
+	}
+	ctx := context.Background()
+	find := NewFinder()
+	f, e := find.Find(ctx, mockSqliteCtr)
+	fmt.Println(jsoniter.MarshalToString(f))
+	fmt.Println(e)
+}

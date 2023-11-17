@@ -34,6 +34,9 @@ func (m InfluxDBFindler) Verify(ctx context.Context, c *Container, thisis func(*
 	defer log.Logger.Debugf("Finish verify influxDB:%s", c.Id)
 
 	err := c.Processes.Range(func(_ int, ps *Process) (err error) {
+		if ps._finder != nil {
+			return nil
+		}
 		//fmt.Println(c.Id, ps.Pid(), ps.ChildPids())
 		var exe string
 		exe, err = process.GetProcessExe(ctx, ps.Process)

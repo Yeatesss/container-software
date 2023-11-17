@@ -200,7 +200,7 @@ func (p *CmdRuner) Run(cmdFuncs ...func() (*exec.Cmd, context.CancelFunc)) (stdo
 				return bytes.NewBuffer(v), nil
 			}
 		}
-		//log.Logger.Debug("Process Not hit cache:", "cmd", cmdStr.String())
+		log.Logger.Debug("Process Not hit cache:", "cmd", cmdStr.String())
 
 		return p.cmdPipeRun(cmdS)
 	})

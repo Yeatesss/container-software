@@ -7,6 +7,7 @@ require (
 	github.com/coocood/freecache v1.2.3
 	github.com/json-iterator/go v1.1.12
 	github.com/pkg/errors v0.9.1
+	github.com/shirou/gopsutil/v3 v3.23.10
 	golang.org/x/sync v0.3.0
 )
 
@@ -26,7 +27,6 @@ require (
 	github.com/muesli/termenv v0.15.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
-	github.com/shirou/gopsutil/v3 v3.23.10 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
